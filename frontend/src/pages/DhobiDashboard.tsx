@@ -50,6 +50,22 @@ export default function DhobiDashboard() {
     }
   };
 
+  const handleConfirmOrder = async (orderId: any) => {
+    try {
+      await axios.put(
+        `${API_URL}/orders/${orderId}/confirm`,
+        {},
+        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      );
+      // Refresh orders
+      fetchOrders();
+      alert('Order confirmed successfully');
+    } catch (err: any) {
+      console.error('Failed to confirm order:', err);
+      alert('Failed to confirm order: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
   return (
     <div className="dashboard-container">
       <nav className="navbar">
@@ -114,27 +130,46 @@ export default function DhobiDashboard() {
                             <p className="list-item-title">{order.order_number}</p>
                             <p className="list-item-subtitle">Customer: {order.customer_name}</p>
                           </div>
-                          <select 
-                            value={order.status} 
-                            onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: '20px',
-                              border: 'none',
-                              background: '#667eea',
-                              color: 'white',
-                              cursor: 'pointer',
-                              fontWeight: '600',
-                              fontSize: '12px'
-                            }}
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="confirmed">Confirmed</option>
-                            <option value="picked-up">Picked Up</option>
-                            <option value="processing">Processing</option>
-                            <option value="ready">Ready</option>
-                            <option value="delivered">Delivered</option>
-                          </select>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {order.status === 'confirmed' && (
+                              <button 
+                                onClick={() => handleConfirmOrder(order.id)}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  background: '#48bb78',
+                                  color: 'white',
+                                  cursor: 'pointer',
+                                  fontWeight: '600',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                Confirm
+                              </button>
+                            )}
+                            <select 
+                              value={order.status} 
+                              onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '20px',
+                                border: 'none',
+                                background: '#667eea',
+                                color: 'white',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                fontSize: '12px'
+                              }}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="confirmed">Confirmed</option>
+                              <option value="picked-up">Picked Up</option>
+                              <option value="processing">Processing</option>
+                              <option value="ready">Ready</option>
+                              <option value="delivered">Delivered</option>
+                            </select>
+                          </div>
                         </div>
                         <div className="list-item-meta">
                           <span>{order.service_type} • {order.total_items || 0} items</span>

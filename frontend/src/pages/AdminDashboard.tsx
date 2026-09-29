@@ -168,6 +168,21 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleConfirmOrder = async (orderId: any) => {
+    try {
+      await axios.put(
+        `${API_URL}/orders/admin/${orderId}`,
+        { status: 'picked-up' },
+        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      );
+      setOrders(orders.map(o => (o._id || o.id) === orderId ? { ...o, status: 'picked-up' } : o));
+      alert('Order confirmed successfully');
+      await fetchStats();
+    } catch (err: any) {
+      alert('Failed to confirm order: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
   const statCards = [
     { icon: Users, label: 'Total Users', value: stats?.totalUsers || 0, color: 'blue' },
     { icon: Package, label: 'Total Orders', value: stats?.totalOrders || 0, color: 'green' },
@@ -385,6 +400,14 @@ export default function AdminDashboard() {
                             >
                               <Briefcase size={14} /> Assign
                             </button>
+                            {order.status === 'confirmed' && order.dhobi_id && (
+                              <button 
+                                onClick={() => handleConfirmOrder(order._id || order.id)}
+                                style={{ background: '#48bb78', color: 'white', border: 'none', padding: '6px 12px', marginRight: '4px', borderRadius: '4px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}
+                              >
+                                <Check size={14} /> Confirm
+                              </button>
+                            )}
                             <button 
                               onClick={() => handleDeleteOrder(order._id || order.id)}
                               style={{ background: '#f56565', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}

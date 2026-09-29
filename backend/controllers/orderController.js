@@ -362,3 +362,37 @@ export const assignDhobi = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to assign dhobi', error: error.message });
   }
 };
+
+// Dhobi: Confirm assigned order
+export const confirmOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid order ID' });
+    }
+
+    // Verify the order is assigned to the dhobi and status is 'confirmed'
+    const order = await Order.findOne({
+      _id: id,
+      dhobi_id: req.user.id,
+      status: 'confirmed'
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found or not assigned to you' });
+    }
+
+    // Update status to 'picked-up' to indicate dhobi has confirmed
+    const updatedOrder = await Order.findByIdAndUpdate(
+      id,
+      { status: 'picked-up' },
+      { new: true }
+    );
+
+    res.json({ success: true, message: 'Order confirmed successfully', data: updatedOrder });
+  } catch (error) {
+    console.error('Confirm order error:', error);
+    res.status(500).json({ success: false, message: 'Failed to confirm order', error: error.message });
+  }
+};

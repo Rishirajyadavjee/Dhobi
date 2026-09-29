@@ -10,7 +10,8 @@ import {
   getAdminStats,
   updateOrder,
   deleteOrder,
-  assignDhobi
+  assignDhobi,
+  confirmOrder
 } from '../controllers/orderController.js';
 
 const router = express.Router();
@@ -29,6 +30,7 @@ router.post('/', authenticate, authorize('user'), createOrder);
 // Dhobi routes
 router.get('/dhobi', authenticate, authorize('dhobi'), getDhobiOrders);
 router.put('/:id/status', authenticate, authorize('dhobi'), updateOrderStatus);
+router.put('/:id/confirm', authenticate, authorize('dhobi'), confirmOrder);
 
 // General routes
 router.get('/stats', authenticate, getOrderStats);
