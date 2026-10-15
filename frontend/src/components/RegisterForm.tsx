@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, EyeOff, AlertCircle, ChevronDown } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface RegisterFormProps {
@@ -28,10 +28,18 @@ export default function RegisterForm({ onSuccess }: RegisterFormProps) {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
+    if (name === 'phone') {
+      const digits = value.replace(/\D/g, '').slice(0, 10);
+      setFormData(prev => ({
+        ...prev,
+        phone: digits,
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
     // Clear error when user starts typing
     if (error) {
       setError('');
@@ -180,7 +188,11 @@ export default function RegisterForm({ onSuccess }: RegisterFormProps) {
       onSuccess?.();
     } catch (err: any) {
       console.error('Registration error:', err);
-      const errorMessage = err.response?.data?.message || err.message || 'Registration failed. Please try again.';
+      const errorMessage =
+        err.response?.data?.message ||
+        err.response?.data?.errors?.[0]?.msg ||
+        err.message ||
+        'Registration failed. Please try again.';
       setError(errorMessage);
       setLoading(false);
     }
@@ -270,18 +282,24 @@ export default function RegisterForm({ onSuccess }: RegisterFormProps) {
             value={formData.phone}
             onChange={handleChange}
             placeholder="Enter 10-digit mobile number"
-            maxLength="10"
+            maxLength={10}
             className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
           />
-          {formData.phone && (
+          {formData.phone ? (
             <p className={`text-xs mt-1 ${
-              /^\d{10}$/.test(formData.phone.replace(/\D/g, '')) && formData.phone[0] !== '0'
+              /^\d{10}$/.test(formData.phone) && formData.phone[0] !== '0'
                 ? 'text-green-600'
                 : 'text-red-600'
             }`}>
-              {/^\d{10}$/.test(formData.phone.replace(/\D/g, '')) && formData.phone[0] !== '0'
+              {/^\d{10}$/.test(formData.phone) && formData.phone[0] !== '0'
                 ? '✓ Valid phone number'
-                : '✗ Phone must be 10 digits (1-9 to 9999999999)'}
+                : formData.phone[0] === '0'
+                ? '✗ Phone number cannot start with 0'
+                : `✗ 10 digits required (${formData.phone.length}/10)`}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500 mt-1">
+              Required for doorstep pickup updates
             </p>
           )}
         </div>

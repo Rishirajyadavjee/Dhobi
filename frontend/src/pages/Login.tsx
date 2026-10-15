@@ -15,13 +15,35 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError('Email address or phone number is required');
+      return;
+    }
+
+    if (!password) {
+      setError('Password is required');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(trimmed, password);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      const errorMessage =
+        err.response?.data?.message ||
+        err.response?.data?.errors?.[0]?.msg ||
+        err.message ||
+        'Login failed. Please check your credentials.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -35,7 +57,7 @@ export default function Login() {
             <LogIn size={32} />
           </div>
           <h1 className="auth-title">Welcome Back</h1>
-          <p className="auth-subtitle">Login to your Dhobi Service account</p>
+          <p className="auth-subtitle">Login with your email or 10-digit phone number</p>
         </div>
 
         {error && (
@@ -49,18 +71,17 @@ export default function Login() {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="email">Email Address</label>
+            <label htmlFor="email">Email Address or Phone Number</label>
             <div className="input-wrapper">
               <div className="input-icon">
                 <Mail size={18} />
               </div>
               <input
                 id="email"
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="your@email.com"
+                placeholder="your@email.com or 9876543210"
               />
             </div>
           </div>

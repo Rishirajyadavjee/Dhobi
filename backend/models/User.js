@@ -31,7 +31,12 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true },
-  phone: { type: String },
+  phone: { 
+    type: String, 
+    trim: true, 
+    sparse: true, 
+    unique: true 
+  },
   role: {
     type: String,
     enum: ['admin', 'user', 'dhobi'],
@@ -53,6 +58,7 @@ const userSchema = new mongoose.Schema({
 
 // Index for fast lookup
 userSchema.index({ email: 1 });
+userSchema.index({ phone: 1 }, { unique: true, sparse: true });
 userSchema.index({ role: 1 });
 
 export default mongoose.model('User', userSchema);

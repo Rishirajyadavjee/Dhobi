@@ -1,74 +1,149 @@
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { Check, ArrowRight, Sparkles, Clock, ShieldCheck, Leaf } from 'lucide-react';
+
 export default function Services() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const handleSelectService = () => {
+    if (user) {
+      navigate('/dashboard');
+    } else {
+      navigate('/');
+    }
+  };
+
+  const services = [
+    {
+      title: 'Daily Wash & Fold',
+      price: '$2.25',
+      unit: 'per lb',
+      desc: 'Separated strictly by light and dark. Cold-enzyme plant wash and hand-folded into crisp bundles.',
+      image: '/eco_packaging.jpg',
+      features: [
+        'Color & fiber segregation',
+        'Plant-based enzyme detergents',
+        '0% chlorine bleach or phthalates',
+        'Precision folded for drawer storage',
+        'Complimentary canvas hamper on return'
+      ],
+      featured: false,
+    },
+    {
+      title: 'Artisan Dry Cleaning',
+      price: 'From $8.50',
+      unit: 'per garment',
+      desc: 'Individual inspection, hydrocarbon gentle cleaning, and contour steam finishing on custom busts.',
+      image: '/craft_detail.jpg',
+      features: [
+        '100% perc-free green cleaning',
+        'Hand-finished lapels and cuffs',
+        'Delicate lining spot inspection',
+        'Free button tightening & minor repairs',
+        'Delivered on natural cedar hangers'
+      ],
+      featured: true,
+    },
+    {
+      title: 'Executive Steam Press',
+      price: '$3.75',
+      unit: 'per shirt',
+      desc: 'High-volume dry steam with Teflon-coated soleplates for razor-sharp creases without shiny fabric glaze.',
+      image: '/hero_curated.jpg',
+      features: [
+        'Collar stay reinforcement',
+        'Zero glaze or iron sheen',
+        'Folded or on wire-free hangers',
+        'Touch-up hand brushing included',
+        'Turnaround in as fast as 12 hours'
+      ],
+      featured: false,
+    }
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col bg-white pt-16">
+    <div className="min-h-screen flex flex-col bg-[#FAF9F5] text-stone-800 pt-24 pb-16">
       {/* Header */}
-      <section className="max-w-6xl mx-auto px-6 py-16 text-center">
-        <h1 className="text-5xl font-bold text-gray-900 mb-4">Our Services</h1>
-        <p className="text-xl text-gray-600">Simple, transparent pricing for all your laundry needs</p>
+      <section className="max-w-5xl mx-auto px-6 py-12 text-center space-y-4">
+        <span className="text-xs uppercase font-bold tracking-widest text-stone-500 bg-stone-200/60 px-3.5 py-1 rounded-full">
+          Transparent Care Menu
+        </span>
+        <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-slate-900 tracking-tight">
+          Bespoke Garment Pricing
+        </h1>
+        <p className="text-base sm:text-lg text-stone-600 max-w-2xl mx-auto font-normal">
+          No surge multipliers, no hidden delivery fees for hampers above $25. Every load is sanitized separately with zero batch mingling.
+        </p>
       </section>
 
       {/* Services Grid */}
-      <section className="max-w-6xl mx-auto px-6 pb-20">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {[
-            {
-              title: 'Wash & Fold',
-              price: '$2.50',
-              unit: 'per lb',
-              desc: 'Everyday laundry done right',
-              features: ['Eco-friendly detergents', 'Color & fabric sorting', 'Precision folding']
-            },
-            {
-              title: 'Dry Cleaning',
-              price: 'From $8',
-              unit: 'per item',
-              desc: 'Professional care for special pieces',
-              features: ['Chemical-free solvents', 'Hand-finished pressing', 'Minor repairs included'],
-              featured: true
-            },
-            {
-              title: 'Specialty Care',
-              price: 'Custom',
-              unit: 'Quote',
-              desc: 'Silk, wool, and delicate fabrics',
-              features: ['Cold water hand wash', 'Flat air drying', 'Specialized fiber treatments']
-            }
-          ].map((service, idx) => (
-            <div key={idx} className={`rounded-xl overflow-hidden ${service.featured ? 'border-2 border-blue-600' : 'border border-gray-200'} transition hover:shadow-xl`}>
-              <div className={`${service.featured ? 'bg-blue-600' : 'bg-gray-100'} h-40 flex items-center justify-center`}>
-                <span style={{ fontSize: '60px' }}>
-                  {service.title === 'Wash & Fold' && '👕'}
-                  {service.title === 'Dry Cleaning' && '🥼'}
-                  {service.title === 'Specialty Care' && '👗'}
-                </span>
-              </div>
-              
-              <div className="p-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">{service.title}</h3>
-                <p className="text-gray-600 mb-6">{service.desc}</p>
-                
-                <div className="mb-6">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-blue-600">{service.price}</span>
-                    <span className="text-gray-600">{service.unit}</span>
+          {services.map((service, idx) => (
+            <div
+              key={idx}
+              className={`rounded-3xl overflow-hidden bg-white border transition-all duration-300 hover:shadow-card flex flex-col justify-between ${
+                service.featured
+                  ? 'border-slate-900 shadow-card ring-1 ring-slate-900'
+                  : 'border-stone-200/90 shadow-soft'
+              }`}
+            >
+              <div>
+                <div className="relative h-48 overflow-hidden bg-stone-100">
+                  <img
+                    src={service.image}
+                    alt={service.title}
+                    className="w-full h-full object-cover object-center transition-transform duration-500 hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent" />
+                  {service.featured && (
+                    <div className="absolute top-4 right-4">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 text-white text-[11px] font-bold tracking-wide uppercase shadow-sm">
+                        <Sparkles className="w-3 h-3 text-amber-300" />
+                        Signature Tier
+                      </span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-4 left-5 text-white">
+                    <h3 className="font-serif text-2xl font-bold">{service.title}</h3>
                   </div>
                 </div>
 
-                <ul className="space-y-3 mb-8">
-                  {service.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <span className="material-symbols-outlined text-blue-600 text-sm mt-1" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                      <span className="text-gray-700">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="p-6 sm:p-8 space-y-6">
+                  <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+                    {service.desc}
+                  </p>
 
-                <button className={`w-full py-3 rounded-lg font-bold transition ${
-                  service.featured 
-                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                    : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-                }`}>
-                  Select Service
+                  <div className="border-t border-b border-stone-100 py-4">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-serif text-3xl font-bold text-slate-900">{service.price}</span>
+                      <span className="text-xs text-stone-500 font-medium">{service.unit}</span>
+                    </div>
+                  </div>
+
+                  <ul className="space-y-3">
+                    {service.features.map((feature, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-xs text-stone-700">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="p-6 sm:p-8 pt-0">
+                <button
+                  onClick={handleSelectService}
+                  className={`w-full py-3.5 rounded-full font-bold text-xs tracking-wide transition-all duration-200 flex items-center justify-center gap-2 ${
+                    service.featured
+                      ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-soft hover:-translate-y-0.5'
+                      : 'bg-stone-100 text-slate-900 hover:bg-stone-200/80 border border-stone-300/60'
+                  }`}
+                >
+                  <span>Select & Schedule</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -76,12 +151,23 @@ export default function Services() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-12 mt-auto">
-        <div className="max-w-6xl mx-auto px-6 text-center">
-          <p>&copy; 2024 Aura. All rights reserved.</p>
+      {/* Guarantees Bar */}
+      <section className="max-w-5xl mx-auto px-6 py-8 border-t border-stone-200/80">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center text-xs text-stone-600">
+          <div className="flex items-center justify-center gap-2">
+            <Clock className="w-4 h-4 text-emerald-600" />
+            <span>Guaranteed 24-48 Hour Turnaround</span>
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>100% Zero-Loss Protection Warranty</span>
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <Leaf className="w-4 h-4 text-emerald-600" />
+            <span>100% Non-Toxic Biodegradable Solvents</span>
+          </div>
         </div>
-      </footer>
+      </section>
     </div>
   );
 }

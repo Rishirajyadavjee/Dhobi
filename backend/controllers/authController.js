@@ -23,18 +23,47 @@ export const register = async (req, res) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
+        message: errors.array()[0].msg,
         errors: errors.array()
       });
     }
 
     const { name, email, password, phone, role = 'user', service_area, experience_years, services_offered, rate_per_item } = req.body;
 
-    // Check if user exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    const cleanName = (name || '').trim();
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPhone = (phone || '').toString().replace(/\D/g, '');
+
+    // 1. Strict validation: Phone number must be exactly 10 digits and not start with 0
+    if (!cleanPhone || cleanPhone.length !== 10) {
       return res.status(400).json({
         success: false,
-        message: 'Email already registered'
+        message: 'Phone number must be exactly 10 digits.'
+      });
+    }
+
+    if (cleanPhone.startsWith('0')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number cannot start with 0.'
+      });
+    }
+
+    // 2. Check if phone number already exists in database
+    const existingPhoneUser = await User.findOne({ phone: cleanPhone });
+    if (existingPhoneUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'This phone number is already registered with an account. Please use another number or log in.'
+      });
+    }
+
+    // 3. Check if email already exists in database
+    const existingEmailUser = await User.findOne({ email: cleanEmail });
+    if (existingEmailUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email address is already registered. Please sign in or use another email.'
       });
     }
 
@@ -43,20 +72,20 @@ export const register = async (req, res) => {
 
     // Build user object
     const userData = {
-      name,
-      email,
+      name: cleanName,
+      email: cleanEmail,
       password: hashedPassword,
-      phone,
+      phone: cleanPhone,
       role
     };
 
     // If dhobi, initialise embedded profile with provided data
     if (role === 'dhobi') {
       userData.dhobiProfile = {
-        service_area: service_area || '',
-        experience_years: experience_years || 0,
+        service_area: (service_area || '').trim(),
+        experience_years: Number(experience_years) || 0,
         services_offered: services_offered || '',
-        rate_per_item: rate_per_item || 0,
+        rate_per_item: Number(rate_per_item) || 0,
         is_verified: false,
         availability_status: 'offline'
       };
@@ -82,34 +111,58 @@ export const register = async (req, res) => {
     });
   } catch (error) {
     console.error('Register error:', error);
+    if (error.code === 11000) {
+      if (error.keyPattern?.phone || error.message?.includes('phone')) {
+        return res.status(400).json({
+          success: false,
+          message: 'This phone number is already registered in the system. Please use a different phone number.'
+        });
+      }
+      if (error.keyPattern?.email || error.message?.includes('email')) {
+        return res.status(400).json({
+          success: false,
+          message: 'An account with this email address already exists. Please log in.'
+        });
+      }
+    }
     res.status(500).json({
       success: false,
-      message: 'Registration failed',
+      message: error.message || 'Registration failed. Please try again.',
       error: error.message
     });
   }
 };
 
-// Login User
+// Login User (Supports Email OR 10-digit Phone)
 export const login = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
+        message: errors.array()[0].msg,
         errors: errors.array()
       });
     }
 
     const { email, password } = req.body;
+    const identifier = (email || '').trim();
 
-    // Get user (include password for comparison)
-    const user = await User.findOne({ email }).select('+password');
+    // Check if input is a 10-digit phone number or an email
+    const cleanPhoneCandidate = identifier.replace(/\D/g, '');
+    const isPhoneNumber = !identifier.includes('@') && cleanPhoneCandidate.length === 10;
+
+    let user;
+    if (isPhoneNumber) {
+      user = await User.findOne({ phone: cleanPhoneCandidate }).select('+password');
+    } else {
+      user = await User.findOne({ email: identifier.toLowerCase() }).select('+password');
+    }
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid credentials. No account found with these details.'
       });
     }
 
@@ -117,7 +170,7 @@ export const login = async (req, res) => {
     if (user.status !== 'active') {
       return res.status(403).json({
         success: false,
-        message: 'Account is suspended or inactive'
+        message: 'Account is suspended or inactive. Please contact customer care.'
       });
     }
 
@@ -126,7 +179,7 @@ export const login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid credentials. Incorrect password.'
       });
     }
 
@@ -237,14 +290,39 @@ export const changePassword = async (req, res) => {
 
 // Validation rules
 export const registerValidation = [
-  body('name').trim().notEmpty().withMessage('Name is required'),
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('phone').optional().isMobilePhone().withMessage('Valid phone number required'),
-  body('role').optional().isIn(['user', 'dhobi']).withMessage('Invalid role')
+  body('name')
+    .trim()
+    .notEmpty().withMessage('Full name is required')
+    .isLength({ min: 2, max: 60 }).withMessage('Full name must be between 2 and 60 characters'),
+  body('email')
+    .trim()
+    .notEmpty().withMessage('Email address is required')
+    .isEmail().withMessage('Please provide a valid email address')
+    .normalizeEmail(),
+  body('password')
+    .notEmpty().withMessage('Password is required')
+    .isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+  body('phone')
+    .notEmpty().withMessage('10-digit mobile number is required')
+    .custom((val) => {
+      const digits = (val || '').toString().replace(/\D/g, '');
+      if (digits.length !== 10) {
+        throw new Error('Phone number must be exactly 10 digits');
+      }
+      if (digits.startsWith('0')) {
+        throw new Error('Phone number cannot begin with 0');
+      }
+      return true;
+    }),
+  body('role')
+    .optional()
+    .isIn(['user', 'dhobi']).withMessage('Role must be user or dhobi')
 ];
 
 export const loginValidation = [
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('password').notEmpty().withMessage('Password is required')
+  body('email')
+    .trim()
+    .notEmpty().withMessage('Email address or phone number is required'),
+  body('password')
+    .notEmpty().withMessage('Password is required')
 ];

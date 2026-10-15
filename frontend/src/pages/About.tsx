@@ -1,115 +1,114 @@
+import { useNavigate } from 'react-router-dom';
+import { Leaf, Sparkles, ArrowRight } from 'lucide-react';
+
 export default function About() {
+  const navigate = useNavigate();
+
   return (
-    <div className="min-h-screen flex flex-col bg-white pt-16">
+    <div className="min-h-screen flex flex-col bg-[#FAF9F5] text-stone-800 pt-24 pb-16">
       {/* Hero */}
-      <section className="max-w-6xl mx-auto px-6 py-16">
-        <h1 className="text-5xl font-bold text-gray-900 mb-4">Our Story</h1>
-        <p className="text-xl text-gray-600 max-w-3xl">
-          At Aura, we believe that quality laundry care shouldn't be a chore. We're committed to delivering premium service that respects both your time and your garments.
+      <section className="max-w-5xl mx-auto px-6 py-16 text-center space-y-4">
+        <span className="text-xs uppercase font-bold tracking-widest text-stone-500 bg-stone-200/60 px-3.5 py-1 rounded-full">
+          The Atelier Philosophy
+        </span>
+        <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-slate-900 tracking-tight">
+          A Return to Gentle Garment Care
+        </h1>
+        <p className="text-base sm:text-lg text-stone-600 max-w-2xl mx-auto font-normal leading-relaxed">
+          Most commercial laundries treat clothes as disposable industrial bulk. We built Aura to treat clothing as heirloom craftsmanship.
         </p>
       </section>
 
-      {/* Section 1 */}
-      <section className="bg-gray-50 py-20">
-        <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-6">Why Aura</h2>
-            <p className="text-lg text-gray-600 mb-4">
-              Founded with a simple mission: to transform laundry from a tedious chore into a seamless part of your lifestyle.
+      {/* Story Grid */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div className="lg:col-span-6 space-y-6">
+            <h2 className="font-serif text-3xl sm:text-4xl text-slate-900">
+              Why commercial laundromats wear out your wardrobe
+            </h2>
+            <p className="text-stone-600 text-sm sm:text-base leading-relaxed">
+              Standard laundromats wash at boiling temperatures with aggressive sodium hypochlorite and harsh spinning. 
+              The result: weakened fibers, faded dyes, curled collars, and missing buttons.
             </p>
-            <p className="text-lg text-gray-600 mb-6">
-              We combine generations of textile expertise with modern technology to ensure your clothes are treated with the care they deserve.
+            <p className="text-stone-600 text-sm sm:text-base leading-relaxed">
+              At Aura, we recalibrate water chemistry and use cold-active botanical enzymes that target protein and lipid stains without stripping natural wool lanolin or degrading organic cotton fibers.
             </p>
-            <div className="space-y-4">
-              <div className="flex gap-4">
-                <span className="material-symbols-outlined text-blue-600 flex-shrink-0">eco</span>
-                <div>
-                  <h4 className="font-bold text-gray-900">Eco-Conscious</h4>
-                  <p className="text-gray-600">Sustainable practices for a better future</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+              <div className="p-4 rounded-2xl bg-white border border-stone-200/80 shadow-soft">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center mb-2">
+                  <Leaf className="w-4 h-4" />
                 </div>
+                <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wide">Botanical Chemistry</h4>
+                <p className="text-xs text-stone-500 mt-1">100% hypoallergenic plant enzymes and zero perchloroethylene solvents.</p>
               </div>
-              <div className="flex gap-4">
-                <span className="material-symbols-outlined text-blue-600 flex-shrink-0">schedule</span>
-                <div>
-                  <h4 className="font-bold text-gray-900">Time-Saving</h4>
-                  <p className="text-gray-600">Convenient pickup and delivery options</p>
+
+              <div className="p-4 rounded-2xl bg-white border border-stone-200/80 shadow-soft">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center mb-2">
+                  <Sparkles className="w-4 h-4" />
                 </div>
+                <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wide">Teflon Hand Press</h4>
+                <p className="text-xs text-stone-500 mt-1">No scorching, no shiny iron streaks, finished by master garment technicians.</p>
               </div>
             </div>
           </div>
-          
-          <div className="bg-gradient-to-br from-blue-50 to-gray-50 rounded-2xl h-96 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-24 h-24 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <span className="text-5xl">🧺</span>
+
+          <div className="lg:col-span-6">
+            <div className="rounded-3xl overflow-hidden shadow-card border border-stone-200/90 relative">
+              <img
+                src="/craft_detail.jpg"
+                alt="Master pressing garments with steam"
+                className="w-full h-[450px] object-cover object-center"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent pointer-events-none" />
+              <div className="absolute bottom-6 left-6 right-6 text-white p-4 rounded-2xl bg-slate-900/60 backdrop-blur-md border border-white/20">
+                <p className="font-serif text-lg font-bold">Master Steam Formers</p>
+                <p className="text-xs text-stone-200">Preserving shoulder line drape and silhouette without fabric stress</p>
               </div>
-              <p className="text-gray-600 font-medium">Quality & Care</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Process */}
-      <section className="max-w-6xl mx-auto px-6 py-20">
-        <h2 className="text-4xl font-bold text-gray-900 mb-12 text-center">Our Process</h2>
-        
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
-          {[
-            { step: '1', title: 'Inspected', desc: 'Detailed check & catalog' },
-            { step: '2', title: 'Treated', desc: 'Stain & spot treatment' },
-            { step: '3', title: 'Cleaned', desc: 'Expert washing' },
-            { step: '4', title: 'Pressed', desc: 'Professional finishing' },
-            { step: '5', title: 'Protected', desc: 'Quality packaged' }
-          ].map((item, idx) => (
-            <div key={idx} className="text-center">
-              <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-lg mx-auto mb-3">
-                {item.step}
+      {/* Process Steps */}
+      <section className="bg-stone-100/60 border-y border-stone-200/70 py-16 my-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="font-serif text-3xl sm:text-4xl text-slate-900 text-center mb-12">
+            The 5 Commitments We Make to Every Garment
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+            {[
+              { num: '01', title: 'Fabric Audit', desc: 'Detailed pocket and seam inspection' },
+              { num: '02', title: 'Targeted Spotting', desc: 'Pre-treated by hand for stain extraction' },
+              { num: '03', title: 'Ozone Sanitized', desc: 'Gentle low-temperature micro-wash' },
+              { num: '04', title: 'Teflon Press', desc: 'High-volume dry steam finishing' },
+              { num: '05', title: 'Canvas Totes', desc: 'Returned in breathable garment hampers' },
+            ].map((step, idx) => (
+              <div key={idx} className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-soft text-center">
+                <span className="font-serif text-xl font-bold text-slate-900 block mb-1">{step.num}</span>
+                <h4 className="text-xs font-bold text-slate-900 mb-1">{step.title}</h4>
+                <p className="text-[11px] text-stone-500 leading-normal">{step.desc}</p>
               </div>
-              <h4 className="font-bold text-gray-900 mb-1">{item.title}</h4>
-              <p className="text-sm text-gray-600">{item.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Values */}
-      <section className="bg-blue-600 text-white py-20">
-        <div className="max-w-6xl mx-auto px-6 text-center">
-          <h2 className="text-4xl font-bold mb-4">Our Commitment</h2>
-          <p className="text-xl opacity-90 max-w-3xl mx-auto">
-            "We're committed to providing exceptional service that makes a difference in your daily life. Your satisfaction is our success."
-          </p>
-        </div>
-      </section>
-
-      {/* Stats */}
-      <section className="max-w-6xl mx-auto px-6 py-20">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-          <div>
-            <div className="text-4xl font-bold text-blue-600">5000+</div>
-            <p className="text-gray-600 mt-2">Happy Customers</p>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-blue-600">99%</div>
-            <p className="text-gray-600 mt-2">Satisfaction</p>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-blue-600">24hrs</div>
-            <p className="text-gray-600 mt-2">Turnaround</p>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-blue-600">10yrs</div>
-            <p className="text-gray-600 mt-2">Experience</p>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-12 mt-auto">
-        <div className="max-w-6xl mx-auto px-6 text-center">
-          <p>&copy; 2024 Aura. All rights reserved.</p>
-        </div>
-      </footer>
+      {/* CTA */}
+      <section className="max-w-4xl mx-auto px-6 py-12 text-center space-y-6">
+        <h3 className="font-serif text-3xl text-slate-900">Experience wardrobe care as it should be.</h3>
+        <p className="text-stone-600 text-sm max-w-xl mx-auto">
+          Schedule your first pickup today. We bring the hamper, treat your clothes with respect, and deliver them back fragrant and ready for your closet.
+        </p>
+        <button
+          onClick={() => navigate('/')}
+          className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-7 py-3.5 rounded-full font-medium text-xs tracking-wide shadow-soft transition hover:-translate-y-0.5"
+        >
+          <span>Schedule Doorstep Pickup</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </section>
     </div>
   );
 }

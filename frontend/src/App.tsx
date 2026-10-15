@@ -44,7 +44,6 @@ function DashboardRouter() {
 }
 
 function AppContent() {
-  const { user } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
 

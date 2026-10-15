@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { UserPlus, Mail, Lock, User, Phone, AlertCircle, Briefcase } from 'lucide-react';
@@ -21,35 +21,72 @@ export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
 
+  const validateForm = (): string => {
+    if (!formData.name.trim()) return 'Full name is required';
+    if (formData.name.trim().length < 2) return 'Full name must be at least 2 characters';
+
+    if (!formData.email.trim()) return 'Email address is required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      return 'Please enter a valid email address';
+    }
+
+    const cleanPhone = formData.phone.replace(/\D/g, '');
+    if (!cleanPhone) return 'Phone number is required';
+    if (cleanPhone.length !== 10) return 'Phone number must be exactly 10 digits';
+    if (cleanPhone.startsWith('0')) return 'Phone number cannot start with 0';
+
+    if (!formData.password) return 'Password is required';
+    if (formData.password.length < 6) return 'Password must be at least 6 characters';
+
+    if (formData.role === 'dhobi') {
+      if (!formData.service_area.trim()) return 'Service area is required for Dhobi partners';
+      if (!formData.services_offered) return 'Please select at least one service offered';
+      if (!formData.rate_per_item || parseFloat(formData.rate_per_item) <= 0) {
+        return 'Please enter a valid rate per item';
+      }
+    }
+
+    return '';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Build the data object based on role
-      const submitData = {
-        name: formData.name,
-        email: formData.email,
+      const cleanPhone = formData.phone.replace(/\D/g, '');
+      const submitData: any = {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
         password: formData.password,
-        phone: formData.phone,
+        phone: cleanPhone,
         role: formData.role
       };
 
-      // Add dhobi-specific fields if registering as dhobi
       if (formData.role === 'dhobi') {
-        Object.assign(submitData, {
-          service_area: formData.service_area,
-          experience_years: formData.experience_years ? parseInt(formData.experience_years) : undefined,
-          services_offered: formData.services_offered,
-          rate_per_item: formData.rate_per_item ? parseFloat(formData.rate_per_item) : undefined
-        });
+        submitData.service_area = formData.service_area.trim();
+        submitData.experience_years = formData.experience_years ? parseInt(formData.experience_years) : 0;
+        submitData.services_offered = formData.services_offered;
+        submitData.rate_per_item = formData.rate_per_item ? parseFloat(formData.rate_per_item) : 0;
       }
 
       await register(submitData);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+      const errorMessage =
+        err.response?.data?.message ||
+        err.response?.data?.errors?.[0]?.msg ||
+        err.message ||
+        'Registration failed. Please try again.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
