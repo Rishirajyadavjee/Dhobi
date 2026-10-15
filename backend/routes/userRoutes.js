@@ -9,7 +9,11 @@ import {
   getDhobiProfile,
   createDhobiProfile,
   updateDhobiProfile,
-  deleteUserAccount
+  deleteUserAccount,
+  createUserByAdmin,
+  updateUserByAdmin,
+  deleteUserByAdmin,
+  toggleUserStatusByAdmin
 } from '../controllers/userController.js';
 
 const router = express.Router();
@@ -18,6 +22,10 @@ const router = express.Router();
 router.get('/admin/all', authenticate, authorize('admin'), getAllUsers);
 router.get('/admin/dhobis', authenticate, authorize('admin'), getDhobis);
 router.get('/admin/stats', authenticate, authorize('admin'), getUserStats);
+router.post('/admin/create', authenticate, authorize('admin'), createUserByAdmin);
+router.put('/admin/:id', authenticate, authorize('admin'), updateUserByAdmin);
+router.delete('/admin/:id', authenticate, authorize('admin'), deleteUserByAdmin);
+router.patch('/admin/:id/status', authenticate, authorize('admin'), toggleUserStatusByAdmin);
 
 // Public dhobi list (for assigning to orders)
 router.get('/dhobis', authenticate, authorize('admin'), getDhobis);

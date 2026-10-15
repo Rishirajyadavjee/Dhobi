@@ -117,7 +117,7 @@ export default function AdminPaymentSection() {
       const selectedDhobi = dhobis.find(d => d._id === paymentForm.dhobiId);
 
       // Check if dhobi has reached monthly limit
-      if (selectedDhobi && selectedDhobi.dhobiProfile?.payments_this_month >= 3) {
+      if (selectedDhobi && (selectedDhobi.dhobiProfile?.payments_this_month ?? 0) >= 3) {
         setError(`Dhobi ${selectedDhobi.name} has reached the monthly payment limit (3 payments)`);
         setProcessingPayment(false);
         return;

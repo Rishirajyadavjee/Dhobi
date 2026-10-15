@@ -1,10 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import {
+  User as UserIcon,
+  Phone,
+  Mail,
+  MapPin,
+  Lock,
+  AlertCircle,
+  CheckCircle2,
+  Trash2,
+  Save
+} from 'lucide-react';
 import axios from 'axios';
-import '../styles/profile.css';
 
 interface ProfileData {
-  id: number;
+  id: string;
+  _id?: string;
   name: string;
   email: string;
   phone?: string;
@@ -12,56 +23,51 @@ interface ProfileData {
   role: string;
   status: string;
   profile_image?: string;
+  dhobiProfile?: {
+    service_area?: string;
+    experience_years?: number;
+    rating?: number;
+    total_orders?: number;
+    is_verified?: boolean;
+    availability_status?: string;
+    services_offered?: string;
+    rate_per_item?: number;
+    bio?: string;
+  };
 }
 
-interface FormData {
-  name: string;
-  phone: string;
-  address: string;
-}
-
-interface DhobiProfileData {
-  user_id: number;
-  service_area: string;
-  experience_years: number;
-  rate_per_item: number;
-  bio: string;
-}
-
-type TabType = 'view' | 'edit' | 'dhobi' | 'security' | 'preferences';
+const API_URL = 'http://localhost:5000/api';
 
 export default function Profile() {
-  const { user, token, logout } = useAuth();
+  const { token, logout } = useAuth();
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [dhobiProfile, setDhobiProfile] = useState<DhobiProfileData | null>(null);
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    phone: '',
-    address: ''
-  });
-  const [dhobiFormData, setDhobiFormData] = useState<DhobiProfileData>({
-    user_id: 0,
-    service_area: '',
-    experience_years: 0,
-    rate_per_item: 0,
-    bio: ''
-  });
-  const [activeTab, setActiveTab] = useState<TabType>('view');
-  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>('');
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | ''; text: string }>({ type: '', text: '' });
+  const [activeTab, setActiveTab] = useState<'info' | 'dhobi' | 'security' | 'danger'>('info');
+
+  // Edit Personal Info State
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+
+  // Dhobi Profile State
+  const [serviceArea, setServiceArea] = useState('');
+  const [experienceYears, setExperienceYears] = useState(0);
+  const [ratePerItem, setRatePerItem] = useState(0);
+  const [bio, setBio] = useState('');
+  const [servicesOffered, setServicesOffered] = useState('');
+  const [availabilityStatus, setAvailabilityStatus] = useState('available');
+
+  // Security (Password) State
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const API_URL = 'http://localhost:5000/api';
+  // Danger Zone
+  const [deletePassword, setDeletePassword] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Fetch profile on mount
   useEffect(() => {
     fetchProfile();
   }, [token]);
@@ -69,715 +75,624 @@ export default function Profile() {
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/users/profile`, {
+      const res = await axios.get(`${API_URL}/users/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (response.data.success) {
-        const data = response.data.data;
+      if (res.data.success) {
+        const data = res.data.data;
         setProfileData(data);
-        setFormData({
-          name: data.name || '',
-          phone: data.phone || '',
-          address: data.address || ''
-        });
-        
-        // Fetch dhobi profile if user is a dhobi
+        setName(data.name || '');
+        setPhone(data.phone || '');
+        setAddress(data.address || '');
+
         if (data.role === 'dhobi') {
-          fetchDhobiProfile(data.id);
+          // Fetch dhobi details if available
+          try {
+            const dhobiRes = await axios.get(`${API_URL}/users/dhobi-profile/${data.id || data._id}`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            const dData = dhobiRes.data.data;
+            if (dData) {
+              setServiceArea(dData.service_area || '');
+              setExperienceYears(dData.experience_years || 0);
+              setRatePerItem(dData.rate_per_item || 0);
+              setBio(dData.bio || '');
+              setServicesOffered(dData.services_offered || '');
+              setAvailabilityStatus(dData.availability_status || 'available');
+            }
+          } catch (e) {
+            console.error('Failed to load dhobi profile subdata:', e);
+          }
         }
       }
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      setMessage({ type: 'error', text: 'Failed to load profile' });
+    } catch (err: any) {
+      console.error('Failed to load profile:', err);
+      setMessage({ type: 'error', text: 'Failed to retrieve profile information.' });
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchDhobiProfile = async (userId: number) => {
-    try {
-      const response = await axios.get(`${API_URL}/users/dhobi-profile/${userId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.data.success && response.data.data) {
-        setDhobiProfile(response.data.data);
-        setDhobiFormData(response.data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching dhobi profile:', error);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleDhobiInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setDhobiFormData(prev => ({
-      ...prev,
-      [name]: isNaN(Number(value)) ? value : Number(value)
-    }));
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-      setMessage({ type: '', text: '' });
-
-      const updateData = {
-        name: formData.name,
-        phone: formData.phone,
-        address: formData.address
-      };
-
-      const response = await axios.put(
-        `${API_URL}/users/profile`,
-        updateData,
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-
-      if (response.data.success) {
-        setProfileData(prev => prev ? { ...prev, ...updateData } : null);
-        setIsEditing(false);
-        setMessage({ type: 'success', text: 'Profile updated successfully!' });
-        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
-      }
-    } catch (error: any) {
-      console.error('Error updating profile:', error);
-      const errorMsg = error.response?.data?.message || 'Failed to update profile';
-      setMessage({ type: 'error', text: errorMsg });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    if (profileData) {
-      setFormData({
-        name: profileData.name || '',
-        phone: profileData.phone || '',
-        address: profileData.address || ''
-      });
-    }
-    setIsEditing(false);
-    setSelectedFile(null);
-    setPreviewUrl('');
+  const handleUpdateInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
     setMessage({ type: '', text: '' });
-  };
 
-  const handleSaveDhobiProfile = async () => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone && (cleanPhone.length !== 10 || cleanPhone.startsWith('0'))) {
+      setMessage({ type: 'error', text: 'Phone number must be exactly 10 digits and cannot start with 0.' });
+      return;
+    }
+
+    setSaving(true);
     try {
-      setSaving(true);
-      setMessage({ type: '', text: '' });
-
-      if (!dhobiFormData.service_area || dhobiFormData.experience_years === 0) {
-        setMessage({ type: 'error', text: 'Please fill in all required fields' });
-        setSaving(false);
-        return;
-      }
-
-      const endpoint = dhobiProfile 
-        ? `${API_URL}/users/dhobi-profile/${profileData?.id}`
-        : `${API_URL}/users/dhobi-profile`;
-
-      const method = dhobiProfile ? 'put' : 'post';
-
-      const response = await axios[method](
-        endpoint,
-        dhobiFormData,
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+      const res = await axios.put(
+        `${API_URL}/users/profile`,
+        { name: name.trim(), phone: cleanPhone, address: address.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      if (response.data.success) {
-        setDhobiProfile(response.data.data);
-        setMessage({ 
-          type: 'success', 
-          text: dhobiProfile ? 'Dhobi profile updated successfully!' : 'Dhobi profile created successfully!'
-        });
-        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      if (res.data.success) {
+        setMessage({ type: 'success', text: 'Profile information updated successfully.' });
+        fetchProfile();
       }
-    } catch (error: any) {
-      console.error('Error saving dhobi profile:', error);
-      const errorMsg = error.response?.data?.message || 'Failed to save dhobi profile';
-      setMessage({ type: 'error', text: errorMsg });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to update profile.' });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleChangePassword = async () => {
+  const handleUpdateDhobiProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage({ type: '', text: '' });
+
+    if (!serviceArea.trim()) {
+      setMessage({ type: 'error', text: 'Service area is required.' });
+      return;
+    }
+
+    setSaving(true);
     try {
-      if (!currentPassword || !newPassword || !confirmPassword) {
-        setMessage({ type: 'error', text: 'Please fill in all password fields' });
-        return;
-      }
-
-      if (newPassword !== confirmPassword) {
-        setMessage({ type: 'error', text: 'New passwords do not match' });
-        return;
-      }
-
-      if (newPassword.length < 6) {
-        setMessage({ type: 'error', text: 'Password must be at least 6 characters' });
-        return;
-      }
-
-      setSaving(true);
-      const response = await axios.post(
-        `${API_URL}/auth/change-password`,
+      const res = await axios.put(
+        `${API_URL}/users/dhobi-profile/${profileData?.id || profileData?._id}`,
         {
-          currentPassword,
-          newPassword
+          service_area: serviceArea.trim(),
+          experience_years: experienceYears,
+          rate_per_item: ratePerItem,
+          bio: bio.trim(),
+          services_offered: servicesOffered,
+          availability_status: availabilityStatus
         },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      if (response.data.success) {
+      if (res.data.success) {
+        setMessage({ type: 'success', text: 'Dhobi atelier profile updated successfully.' });
+        fetchProfile();
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to update dhobi profile.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage({ type: '', text: '' });
+
+    if (newPassword.length < 6) {
+      setMessage({ type: 'error', text: 'New password must be at least 6 characters long.' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setMessage({ type: 'error', text: 'Passwords do not match.' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await axios.post(
+        `${API_URL}/auth/change-password`,
+        { currentPassword, newPassword },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (res.data.success) {
+        setMessage({ type: 'success', text: 'Password successfully changed.' });
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
-        setMessage({ type: 'success', text: 'Password changed successfully!' });
-        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
       }
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.message || 'Failed to change password';
-      setMessage({ type: 'error', text: errorMsg });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to change password.' });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteProfile = async () => {
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) {
+      alert('Please enter your account password to authorize deletion.');
+      return;
+    }
+
     try {
-      if (!deletePassword) {
-        setMessage({ type: 'error', text: 'Please enter your password to confirm deletion' });
-        return;
-      }
-
-      setSaving(true);
-      const response = await axios.delete(
-        `${API_URL}/users/profile`,
-        {
-          data: { password: deletePassword },
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-
-      if (response.data.success) {
-        setMessage({ type: 'success', text: 'Account deleted successfully. Logging out...' });
-        setTimeout(() => {
-          logout();
-        }, 2000);
-      }
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.message || 'Failed to delete account';
-      setMessage({ type: 'error', text: errorMsg });
-    } finally {
-      setSaving(false);
-      setShowDeleteConfirm(false);
-      setDeletePassword('');
+      await axios.delete(`${API_URL}/users/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password: deletePassword }
+      });
+      alert('Your account has been deleted.');
+      logout();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to delete account.');
     }
   };
 
   if (loading) {
     return (
-      <div className="profile-container">
-        <div className="profile-loading">
-          <div className="spinner"></div>
-          <p>Loading profile...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!profileData) {
-    return (
-      <div className="profile-container">
-        <div className="profile-error">
-          <h2>Profile Not Found</h2>
-          <p>Unable to load your profile information.</p>
+      <div className="min-h-screen bg-[#FAF9F5] flex items-center justify-center pt-20">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs uppercase tracking-wider text-stone-500 font-bold">Loading Account Details...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="profile-container">
-      <div className="profile-card">
-        <div className="profile-header">
-          <h1>My Profile</h1>
-          <p className="profile-role">{profileData.role.charAt(0).toUpperCase() + profileData.role.slice(1)}</p>
-        </div>
+    <div className="min-h-screen bg-[#FAF9F5] text-stone-800 pt-24 pb-20 selection:bg-slate-900 selection:text-white">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        {/* Profile Card Header */}
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/90 shadow-soft mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-slate-900 text-white font-serif font-bold text-2xl flex items-center justify-center shadow-card shrink-0">
+                {profileData?.name?.charAt(0).toUpperCase() || 'U'}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-serif text-2xl sm:text-3xl font-bold text-slate-900">
+                    {profileData?.name}
+                  </h1>
+                  <span className="text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-700 border border-stone-200">
+                    {profileData?.role}
+                  </span>
+                </div>
+                <p className="text-xs text-stone-500 mt-1 flex items-center gap-2">
+                  <Mail className="w-3.5 h-3.5 text-stone-400" />
+                  <span>{profileData?.email}</span>
+                  {profileData?.phone && (
+                    <>
+                      <span className="text-stone-300">•</span>
+                      <Phone className="w-3.5 h-3.5 text-stone-400" />
+                      <span>{profileData.phone}</span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
 
-        {/* Tab Navigation */}
-        <div className="profile-tabs">
-          <button
-            className={`tab-btn ${activeTab === 'view' ? 'active' : ''}`}
-            onClick={() => setActiveTab('view')}
-          >
-            👁️ View Profile
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'edit' ? 'active' : ''}`}
-            onClick={() => setActiveTab('edit')}
-          >
-            ✏️ Edit Profile
-          </button>
-          {profileData.role === 'dhobi' && (
+            <div className="flex items-center gap-2 self-start sm:self-center">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                profileData?.status === 'active'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${profileData?.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                {profileData?.status === 'active' ? 'Account Active' : 'Account Suspended'}
+              </span>
+            </div>
+          </div>
+
+          {/* Tab Navigation */}
+          <div className="flex items-center gap-2 mt-8 pt-6 border-t border-stone-100 overflow-x-auto pb-1 text-xs font-semibold">
             <button
-              className={`tab-btn ${activeTab === 'dhobi' ? 'active' : ''}`}
-              onClick={() => setActiveTab('dhobi')}
+              onClick={() => { setActiveTab('info'); setMessage({ type: '', text: '' }); }}
+              className={`px-4 py-2 rounded-full transition-all whitespace-nowrap ${
+                activeTab === 'info'
+                  ? 'bg-slate-900 text-white shadow-soft font-bold'
+                  : 'text-stone-600 hover:text-slate-900 hover:bg-stone-100'
+              }`}
             >
-              🧑‍💼 Dhobi Info
+              Personal Details
             </button>
-          )}
-          <button
-            className={`tab-btn ${activeTab === 'security' ? 'active' : ''}`}
-            onClick={() => setActiveTab('security')}
-          >
-            🔒 Security
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'preferences' ? 'active' : ''}`}
-            onClick={() => setActiveTab('preferences')}
-          >
-            ⚙️ Settings
-          </button>
+
+            {profileData?.role === 'dhobi' && (
+              <button
+                onClick={() => { setActiveTab('dhobi'); setMessage({ type: '', text: '' }); }}
+                className={`px-4 py-2 rounded-full transition-all whitespace-nowrap ${
+                  activeTab === 'dhobi'
+                    ? 'bg-slate-900 text-white shadow-soft font-bold'
+                    : 'text-stone-600 hover:text-slate-900 hover:bg-stone-100'
+                }`}
+              >
+                Dhobi Service Profile
+              </button>
+            )}
+
+            <button
+              onClick={() => { setActiveTab('security'); setMessage({ type: '', text: '' }); }}
+              className={`px-4 py-2 rounded-full transition-all whitespace-nowrap ${
+                activeTab === 'security'
+                  ? 'bg-slate-900 text-white shadow-soft font-bold'
+                  : 'text-stone-600 hover:text-slate-900 hover:bg-stone-100'
+              }`}
+            >
+              Password & Security
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('danger'); setMessage({ type: '', text: '' }); }}
+              className={`px-4 py-2 rounded-full transition-all whitespace-nowrap ${
+                activeTab === 'danger'
+                  ? 'bg-rose-600 text-white shadow-soft font-bold'
+                  : 'text-rose-600 hover:bg-rose-50'
+              }`}
+            >
+              Danger Zone
+            </button>
+          </div>
         </div>
 
+        {/* Status / Feedback message */}
         {message.text && (
-          <div className={`profile-message profile-message-${message.type}`}>
-            {message.text}
+          <div className={`p-4 rounded-2xl mb-6 text-sm flex items-center gap-3 ${
+            message.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border border-rose-200'
+          }`}>
+            {message.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            )}
+            <p className="font-medium">{message.text}</p>
           </div>
         )}
 
-        <div className="profile-content">
-          {/* VIEW TAB */}
-          {activeTab === 'view' && (
-            <>
-              {/* Profile Avatar Section */}
-              <div className="profile-avatar-section">
-                <div className="profile-avatar">
-                  {profileData.profile_image ? (
-                    <img src={profileData.profile_image} alt={profileData.name} />
-                  ) : (
-                    <div className="avatar-placeholder">
-                      {profileData.name.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+        {/* Tab 1: Personal Details */}
+        {activeTab === 'info' && (
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/90 shadow-soft">
+            <h2 className="font-serif text-xl font-bold text-slate-900 mb-1">Personal Information</h2>
+            <p className="text-xs text-stone-500 mb-6">Manage your primary contact and doorstep collection details.</p>
+
+            <form onSubmit={handleUpdateInfo} className="space-y-5">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <UserIcon className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                  />
                 </div>
               </div>
 
-              {/* Profile Information */}
-              <div className="profile-info">
-                <div className="info-group">
-                  <label>Full Name</label>
-                  <div className="info-value">{profileData.name}</div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Registered Email Address (Permanent ID)
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                  <input
+                    type="email"
+                    disabled
+                    value={profileData?.email || ''}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 bg-stone-100 text-stone-500 text-sm cursor-not-allowed"
+                  />
                 </div>
+                <p className="text-[11px] text-stone-400 mt-1">To change your primary email, contact customer support.</p>
+              </div>
 
-                <div className="info-group">
-                  <label>Email Address</label>
-                  <div className="info-value">{profileData.email}</div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  10-Digit Mobile Number
+                </label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="Enter 10 digits"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                  />
                 </div>
+                {phone && (
+                  <p className={`text-xs mt-1 ${
+                    /^\d{10}$/.test(phone) && phone[0] !== '0' ? 'text-emerald-600' : 'text-rose-600'
+                  }`}>
+                    {/^\d{10}$/.test(phone) && phone[0] !== '0'
+                      ? '✓ Valid 10-digit number'
+                      : '✗ Must be 10 digits and cannot start with 0'}
+                  </p>
+                )}
+              </div>
 
-                <div className="info-group">
-                  <label>Phone Number</label>
-                  <div className="info-value">{profileData.phone || 'Not provided'}</div>
-                </div>
-
-                <div className="info-group">
-                  <label>Address</label>
-                  <div className="info-value">{profileData.address || 'Not provided'}</div>
-                </div>
-
-                <div className="info-group">
-                  <label>Status</label>
-                  <div className={`status-badge status-${profileData.status}`}>
-                    {profileData.status.charAt(0).toUpperCase() + profileData.status.slice(1)}
-                  </div>
-                </div>
-
-                <div className="info-group">
-                  <label>Account ID</label>
-                  <div className="info-value">#{profileData.id}</div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Default Doorstep Collection Address
+                </label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                  <textarea
+                    rows={3}
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Apartment, Street address, City"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                  />
                 </div>
               </div>
-            </>
-          )}
 
-          {/* EDIT TAB */}
-          {activeTab === 'edit' && (
-            <>
-              {/* Profile Avatar Section */}
-              <div className="profile-avatar-section">
-                <div className="profile-avatar">
-                  {previewUrl ? (
-                    <img src={previewUrl} alt="Profile" />
-                  ) : profileData.profile_image ? (
-                    <img src={profileData.profile_image} alt={profileData.name} />
-                  ) : (
-                    <div className="avatar-placeholder">
-                      {profileData.name.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+              <div className="pt-3 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-stone-300 text-white text-xs font-bold px-6 py-2.5 rounded-full shadow-soft transition"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{saving ? 'Saving...' : 'Save Profile Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Tab 2: Dhobi Profile (Only visible if role === 'dhobi') */}
+        {activeTab === 'dhobi' && profileData?.role === 'dhobi' && (
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/90 shadow-soft">
+            <h2 className="font-serif text-xl font-bold text-slate-900 mb-1">Dhobi Atelier Settings</h2>
+            <p className="text-xs text-stone-500 mb-6">Manage your service availability, operational zones, and laundry specialty rates.</p>
+
+            <form onSubmit={handleUpdateDhobiProfile} className="space-y-5">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Current Availability Status
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { id: 'available', label: '🟢 Available', desc: 'Accepting new hampers' },
+                    { id: 'busy', label: '🟡 Busy', desc: 'Full capacity' },
+                    { id: 'offline', label: '⚪ Offline', desc: 'Not on duty' }
+                  ].map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => setAvailabilityStatus(st.id)}
+                      className={`p-3 rounded-2xl text-left border text-xs transition ${
+                        availabilityStatus === st.id
+                          ? 'border-slate-900 bg-slate-900 text-white font-bold'
+                          : 'border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      <p>{st.label}</p>
+                      <p className={`text-[10px] mt-0.5 ${availabilityStatus === st.id ? 'text-stone-300' : 'text-stone-400'}`}>
+                        {st.desc}
+                      </p>
+                    </button>
+                  ))}
                 </div>
-                <div className="avatar-upload">
-                  <label htmlFor="profile-image-input" className="upload-label">
-                    📷 Choose Photo
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                    Service Operating Area
                   </label>
                   <input
-                    id="profile-image-input"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden-input"
-                  />
-                </div>
-              </div>
-
-              {/* Edit Form */}
-              <div className="profile-info">
-                <div className="form-group">
-                  <label htmlFor="name">Full Name *</label>
-                  <input
-                    id="name"
                     type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    className="form-input"
                     required
+                    value={serviceArea}
+                    onChange={(e) => setServiceArea(e.target.value)}
+                    placeholder="e.g. Central London, West End, Kensington"
+                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
                   />
                 </div>
 
-                <div className="form-group">
-                  <label htmlFor="email">Email Address (Read-only)</label>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                    Years of Garment Experience
+                  </label>
                   <input
-                    id="email"
-                    type="email"
-                    value={profileData.email}
-                    className="form-input disabled"
-                    disabled
+                    type="number"
+                    min="0"
+                    max="60"
+                    value={experienceYears}
+                    onChange={(e) => setExperienceYears(parseInt(e.target.value) || 0)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
                   />
-                  <small>Email cannot be changed</small>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="phone">Phone Number</label>
-                  <input
-                    id="phone"
-                    type="tel"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    className="form-input"
-                    placeholder="+1 (555) 000-0000"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="address">Address</label>
-                  <textarea
-                    id="address"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    className="form-textarea"
-                    placeholder="Enter your address"
-                    rows={3}
-                  />
-                </div>
-
-                <div className="profile-actions">
-                  <button
-                    className="btn btn-success"
-                    onClick={handleSave}
-                    disabled={saving}
-                  >
-                    {saving ? 'Saving...' : '💾 Save Changes'}
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={handleCancel}
-                    disabled={saving}
-                  >
-                    ❌ Cancel
-                  </button>
                 </div>
               </div>
-            </>
-          )}
 
-          {/* DHOBI PROFILE TAB */}
-          {activeTab === 'dhobi' && profileData.role === 'dhobi' && (
-            <>
-              <div className="dhobi-info-section">
-                <h2>Dhobi Profile Information</h2>
-                
-                {dhobiProfile ? (
-                  <div className="dhobi-display">
-                    <div className="info-group">
-                      <label>Service Area</label>
-                      <div className="info-value">{dhobiProfile.service_area}</div>
-                    </div>
-
-                    <div className="info-group">
-                      <label>Experience (Years)</label>
-                      <div className="info-value">{dhobiProfile.experience_years} years</div>
-                    </div>
-
-                    <div className="info-group">
-                      <label>Rate Per Item</label>
-                      <div className="info-value">₹{dhobiProfile.rate_per_item}</div>
-                    </div>
-
-                    <div className="info-group">
-                      <label>Bio</label>
-                      <div className="info-value">{dhobiProfile.bio || 'No bio provided'}</div>
-                    </div>
-
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => setActiveTab('edit')}
-                    >
-                      ✏️ Update Dhobi Profile
-                    </button>
-                  </div>
-                ) : (
-                  <div className="no-dhobi-profile">
-                    <p>No dhobi profile found. Create one to get started!</p>
-                  </div>
-                )}
-
-                <div className="dhobi-form">
-                  <h3>{dhobiProfile ? 'Update' : 'Create'} Dhobi Profile</h3>
-
-                  <div className="form-group">
-                    <label htmlFor="service_area">Service Area *</label>
-                    <input
-                      id="service_area"
-                      type="text"
-                      name="service_area"
-                      value={dhobiFormData.service_area}
-                      onChange={handleDhobiInputChange}
-                      className="form-input"
-                      placeholder="e.g., Downtown, North Side"
-                      required
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="experience_years">Experience (Years) *</label>
-                    <input
-                      id="experience_years"
-                      type="number"
-                      name="experience_years"
-                      value={dhobiFormData.experience_years}
-                      onChange={handleDhobiInputChange}
-                      className="form-input"
-                      min="0"
-                      required
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="rate_per_item">Rate Per Item (₹)</label>
-                    <input
-                      id="rate_per_item"
-                      type="number"
-                      name="rate_per_item"
-                      value={dhobiFormData.rate_per_item}
-                      onChange={handleDhobiInputChange}
-                      className="form-input"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="bio">Bio</label>
-                    <textarea
-                      id="bio"
-                      name="bio"
-                      value={dhobiFormData.bio}
-                      onChange={handleDhobiInputChange}
-                      className="form-textarea"
-                      placeholder="Tell customers about yourself"
-                      rows={4}
-                    />
-                  </div>
-
-                  <div className="profile-actions">
-                    <button
-                      className="btn btn-success"
-                      onClick={handleSaveDhobiProfile}
-                      disabled={saving}
-                    >
-                      {saving ? 'Saving...' : '💾 Save Dhobi Profile'}
-                    </button>
-                  </div>
-                </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Base Rate Per Item (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={ratePerItem}
+                  onChange={(e) => setRatePerItem(parseFloat(e.target.value) || 0)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                />
               </div>
-            </>
-          )}
 
-          {/* SECURITY TAB */}
-          {activeTab === 'security' && (
-            <div className="security-section">
-              <h2>Security Settings</h2>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Services Offered
+                </label>
+                <input
+                  type="text"
+                  value={servicesOffered}
+                  onChange={(e) => setServicesOffered(e.target.value)}
+                  placeholder="e.g. Wash & Fold, Steam Press, Wool Restoration"
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                />
+              </div>
 
-              <div className="security-form">
-                <h3>Change Password</h3>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Dhobi Bio & Fabric Craftsmanship Notes
+                </label>
+                <textarea
+                  rows={3}
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Tell clients about your textile experience, enzyme wash techniques, or tailoring precision..."
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
+                />
+              </div>
 
-                <div className="form-group">
-                  <label htmlFor="current-password">Current Password *</label>
+              <div className="pt-3 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-stone-300 text-white text-xs font-bold px-6 py-2.5 rounded-full shadow-soft transition"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{saving ? 'Updating...' : 'Save Dhobi Profile'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Tab 3: Security & Password */}
+        {activeTab === 'security' && (
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/90 shadow-soft">
+            <h2 className="font-serif text-xl font-bold text-slate-900 mb-1">Password & Security</h2>
+            <p className="text-xs text-stone-500 mb-6">Ensure your account has a strong password to protect your delivery addresses and payment cards.</p>
+
+            <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Current Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
                   <input
-                    id="current-password"
                     type="password"
+                    required
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="form-input"
-                    placeholder="Enter your current password"
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
                   />
                 </div>
+              </div>
 
-                <div className="form-group">
-                  <label htmlFor="new-password">New Password *</label>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  New Password (min 6 characters)
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
                   <input
-                    id="new-password"
                     type="password"
+                    required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="form-input"
-                    placeholder="Enter new password (min 6 characters)"
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
                   />
                 </div>
+              </div>
 
-                <div className="form-group">
-                  <label htmlFor="confirm-password">Confirm New Password *</label>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Confirm New Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
                   <input
-                    id="confirm-password"
                     type="password"
+                    required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="form-input"
-                    placeholder="Re-enter new password"
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm"
                   />
                 </div>
-
-                <div className="profile-actions">
-                  <button
-                    className="btn btn-success"
-                    onClick={handleChangePassword}
-                    disabled={saving}
-                  >
-                    {saving ? 'Updating...' : '🔐 Change Password'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* PREFERENCES/SETTINGS TAB */}
-          {activeTab === 'preferences' && (
-            <div className="preferences-section">
-              <h2>Account Settings</h2>
-
-              <div className="settings-group">
-                <h3>Account Information</h3>
-                <div className="setting-item">
-                  <strong>Account ID:</strong> #{profileData.id}
-                </div>
-                <div className="setting-item">
-                  <strong>Role:</strong> {profileData.role.toUpperCase()}
-                </div>
-                <div className="setting-item">
-                  <strong>Status:</strong> {profileData.status}
-                </div>
-                <div className="setting-item">
-                  <strong>Email:</strong> {profileData.email}
-                </div>
               </div>
 
-              <div className="settings-group danger-zone">
-                <h3>⚠️ Danger Zone</h3>
-                <p>These actions cannot be undone.</p>
-
-                {!showDeleteConfirm ? (
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    🗑️ Delete Account
-                  </button>
-                ) : (
-                  <div className="delete-confirmation">
-                    <h4>Delete Account?</h4>
-                    <p>This will permanently delete your account and all associated data.</p>
-                    
-                    <div className="form-group">
-                      <label htmlFor="delete-password">Enter your password to confirm *</label>
-                      <input
-                        id="delete-password"
-                        type="password"
-                        value={deletePassword}
-                        onChange={(e) => setDeletePassword(e.target.value)}
-                        className="form-input"
-                        placeholder="Your password"
-                      />
-                    </div>
-
-                    <div className="profile-actions">
-                      <button
-                        className="btn btn-danger"
-                        onClick={handleDeleteProfile}
-                        disabled={saving || !deletePassword}
-                      >
-                        {saving ? 'Deleting...' : '✓ Confirm Delete'}
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          setShowDeleteConfirm(false);
-                          setDeletePassword('');
-                        }}
-                        disabled={saving}
-                      >
-                        ❌ Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
+              <div className="pt-3">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-stone-300 text-white text-xs font-bold px-6 py-2.5 rounded-full shadow-soft transition"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>{saving ? 'Updating...' : 'Update Password'}</span>
+                </button>
               </div>
-            </div>
-          )}
-        </div>
+            </form>
+          </div>
+        )}
+
+        {/* Tab 4: Danger Zone */}
+        {activeTab === 'danger' && (
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-rose-200 shadow-soft">
+            <h2 className="font-serif text-xl font-bold text-rose-700 mb-1">Delete Account & Data</h2>
+            <p className="text-xs text-stone-500 mb-6">
+              Permanently delete your profile, saved hampers, addresses, and payment tokens. This action is irreversible.
+            </p>
+
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-6 py-2.5 rounded-full shadow-soft transition"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Proceed to Account Deletion</span>
+            </button>
+          </div>
+        )}
+
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-floating w-full max-w-md p-6 border border-stone-200 space-y-4">
+            <h3 className="font-serif text-xl font-bold text-slate-900">Confirm Deletion</h3>
+            <p className="text-xs text-stone-600 leading-relaxed">
+              Please enter your current account password to authorize permanent deletion of your profile and records.
+            </p>
+            <input
+              type="password"
+              placeholder="Your password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-rose-500 text-sm"
+            />
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeletePassword(''); }}
+                className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-full"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                className="px-5 py-2 text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 rounded-full"
+              >
+                Permanently Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

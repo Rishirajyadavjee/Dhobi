@@ -10,6 +10,10 @@ interface User {
   role: 'admin' | 'user' | 'dhobi';
   phone?: string;
   status: string;
+  address?: string;
+  wallet_balance?: number;
+  total_spent?: number;
+  profile_image?: string;
   dhobiProfile?: {
     service_area?: string;
     experience_years?: number;

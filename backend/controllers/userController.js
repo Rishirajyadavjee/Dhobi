@@ -3,21 +3,300 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Order from '../models/Order.js';
 
-// Get all users (Admin)
+// Get all users with optional filtering (Admin)
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({ role: { $ne: 'admin' } })
-      .select('name email phone role status createdAt')
+    const { role, status, search } = req.query;
+    const query = {};
+
+    if (role && role !== 'all') {
+      query.role = role;
+    }
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    if (search) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { name: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex }
+      ];
+    }
+
+    const users = await User.find(query)
+      .select('name email phone role status address dhobiProfile createdAt')
       .sort({ createdAt: -1 })
       .lean();
 
     res.json({
       success: true,
-      data: users.map(u => ({ ...u, id: u._id, created_at: u.createdAt }))
+      data: users.map(u => ({
+        ...u,
+        _id: String(u._id),
+        id: String(u._id),
+        created_at: u.createdAt
+      }))
     });
   } catch (error) {
     console.error('Get all users error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch users', error: error.message });
+  }
+};
+
+// Create User (Admin)
+export const createUserByAdmin = async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      password,
+      phone,
+      role = 'user',
+      status = 'active',
+      address,
+      service_area,
+      experience_years,
+      services_offered,
+      rate_per_item
+    } = req.body;
+
+    const cleanName = (name || '').trim();
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanPhone = (phone || '').toString().replace(/\D/g, '');
+
+    if (!cleanName || cleanName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Full name must be at least 2 characters.' });
+    }
+
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
+    }
+
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      return res.status(400).json({ success: false, message: 'Phone number must be exactly 10 digits.' });
+    }
+
+    if (cleanPhone.startsWith('0')) {
+      return res.status(400).json({ success: false, message: 'Phone number cannot start with 0.' });
+    }
+
+    // Check email uniqueness
+    const existingEmail = await User.findOne({ email: cleanEmail });
+    if (existingEmail) {
+      return res.status(400).json({ success: false, message: 'A user with this email address already exists.' });
+    }
+
+    // Check phone uniqueness
+    const existingPhone = await User.findOne({ phone: cleanPhone });
+    if (existingPhone) {
+      return res.status(400).json({ success: false, message: 'A user with this phone number already exists.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const userData = {
+      name: cleanName,
+      email: cleanEmail,
+      password: hashedPassword,
+      phone: cleanPhone,
+      role,
+      status,
+      address: (address || '').trim()
+    };
+
+    if (role === 'dhobi') {
+      userData.dhobiProfile = {
+        service_area: (service_area || '').trim(),
+        experience_years: Number(experience_years) || 0,
+        services_offered: services_offered || '',
+        rate_per_item: Number(rate_per_item) || 0,
+        is_verified: true,
+        availability_status: 'available'
+      };
+    }
+
+    const newUser = await User.create(userData);
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: {
+        _id: String(newUser._id),
+        id: String(newUser._id),
+        name: newUser.name,
+        email: newUser.email,
+        phone: newUser.phone,
+        role: newUser.role,
+        status: newUser.status,
+        address: newUser.address,
+        dhobiProfile: newUser.dhobiProfile,
+        created_at: newUser.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Admin create user error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to create user' });
+  }
+};
+
+// Update User (Admin)
+export const updateUserByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      email,
+      phone,
+      role,
+      status,
+      password,
+      address,
+      service_area,
+      experience_years,
+      services_offered,
+      rate_per_item,
+      is_verified,
+      availability_status
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Check duplicate email if changed
+    if (email) {
+      const cleanEmail = email.trim().toLowerCase();
+      if (cleanEmail !== user.email) {
+        const existingEmail = await User.findOne({ email: cleanEmail, _id: { $ne: id } });
+        if (existingEmail) {
+          return res.status(400).json({ success: false, message: 'Email address is already in use by another user.' });
+        }
+        user.email = cleanEmail;
+      }
+    }
+
+    // Check duplicate phone if changed
+    if (phone) {
+      const cleanPhone = phone.toString().replace(/\D/g, '');
+      if (cleanPhone.length !== 10 || cleanPhone.startsWith('0')) {
+        return res.status(400).json({ success: false, message: 'Phone must be a valid 10-digit number not starting with 0.' });
+      }
+      if (cleanPhone !== user.phone) {
+        const existingPhone = await User.findOne({ phone: cleanPhone, _id: { $ne: id } });
+        if (existingPhone) {
+          return res.status(400).json({ success: false, message: 'Phone number is already registered to another user.' });
+        }
+        user.phone = cleanPhone;
+      }
+    }
+
+    if (name) user.name = name.trim();
+    if (role) user.role = role;
+    if (status) user.status = status;
+    if (address !== undefined) user.address = address.trim();
+
+    if (password && password.trim().length >= 6) {
+      user.password = await bcrypt.hash(password.trim(), 10);
+    }
+
+    // If role is dhobi, update dhobiProfile
+    if (user.role === 'dhobi') {
+      user.dhobiProfile = {
+        service_area: service_area !== undefined ? service_area.trim() : (user.dhobiProfile?.service_area || ''),
+        experience_years: experience_years !== undefined ? Number(experience_years) : (user.dhobiProfile?.experience_years || 0),
+        services_offered: services_offered !== undefined ? services_offered : (user.dhobiProfile?.services_offered || ''),
+        rate_per_item: rate_per_item !== undefined ? Number(rate_per_item) : (user.dhobiProfile?.rate_per_item || 0),
+        is_verified: is_verified !== undefined ? Boolean(is_verified) : (user.dhobiProfile?.is_verified ?? false),
+        availability_status: availability_status || user.dhobiProfile?.availability_status || 'available'
+      };
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'User updated successfully',
+      data: {
+        _id: String(user._id),
+        id: String(user._id),
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        status: user.status,
+        address: user.address,
+        dhobiProfile: user.dhobiProfile,
+        created_at: user.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Admin update user error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update user' });
+  }
+};
+
+// Delete User (Admin)
+export const deleteUserByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
+
+    if (String(id) === String(req.user.id)) {
+      return res.status(400).json({ success: false, message: 'Administrators cannot delete their own account.' });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Delete associated orders
+    await Order.deleteMany({ $or: [{ user_id: id }, { dhobi_id: id }] });
+    await User.findByIdAndDelete(id);
+
+    res.json({ success: true, message: `User "${user.name}" and associated records deleted successfully.` });
+  } catch (error) {
+    console.error('Admin delete user error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to delete user' });
+  }
+};
+
+// Quick Toggle User Status (Admin)
+export const toggleUserStatusByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['active', 'suspended', 'inactive'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Status must be active, suspended, or inactive.' });
+    }
+
+    const user = await User.findByIdAndUpdate(id, { status }, { new: true }).select('name email status');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      message: `User status changed to ${status}`,
+      data: user
+    });
+  } catch (error) {
+    console.error('Toggle status error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to toggle status' });
   }
 };
 

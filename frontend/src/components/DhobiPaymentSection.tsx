@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Wallet, TrendingUp, AlertCircle, Check, Clock } from 'lucide-react';
+import { Wallet, TrendingUp, AlertCircle, Check } from 'lucide-react';
 import axios from 'axios';
 
 const API_URL = 'http://localhost:5000/api';
