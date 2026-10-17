@@ -77,12 +77,22 @@ export default function Navigation({ onLoginClick, onRegisterClick }: Navigation
         <div className="flex items-center gap-3">
           {user ? (
             <div className="flex items-center gap-2">
+              {user.role === 'admin' ? (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                  Admin
+                </span>
+              ) : user.role === 'dhobi' ? (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                  Artisan Partner
+                </span>
+              ) : null}
+
               <button
                 onClick={handleDashboard}
-                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold tracking-wide text-stone-700 hover:text-slate-950 px-3 py-2 rounded-lg hover:bg-stone-200/50 transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold tracking-wide text-stone-700 hover:text-slate-950 px-3 py-2 rounded-lg hover:bg-stone-200/50 transition-colors"
               >
                 <LayoutDashboard className="w-3.5 h-3.5" />
-                Dashboard
+                {user.role === 'admin' ? 'Control Center' : user.role === 'dhobi' ? 'Artisan Workspace' : 'Dashboard'}
               </button>
               <button
                 onClick={handleProfile}
@@ -91,13 +101,15 @@ export default function Navigation({ onLoginClick, onRegisterClick }: Navigation
                 <UserIcon className="w-3.5 h-3.5" />
                 Profile
               </button>
-              <button
-                onClick={handleBookPickup}
-                className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-full font-medium text-xs tracking-wide shadow-soft transition-all duration-200 hover:shadow-card hover:-translate-y-0.5"
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                Book Pickup
-              </button>
+              {user.role === 'user' && (
+                <button
+                  onClick={handleBookPickup}
+                  className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-full font-medium text-xs tracking-wide shadow-soft transition-all duration-200 hover:shadow-card hover:-translate-y-0.5"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Book Pickup
+                </button>
+              )}
               <button
                 onClick={handleLogout}
                 title="Log Out"

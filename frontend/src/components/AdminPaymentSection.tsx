@@ -1,5 +1,17 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, TrendingUp, AlertCircle, Send, RefreshCw } from 'lucide-react';
+import {
+  CreditCard,
+  AlertCircle,
+  Send,
+  RefreshCw,
+  CheckCircle2,
+  Clock,
+  Plus,
+  X,
+  Search,
+  ArrowDownLeft,
+  ArrowUpRight
+} from 'lucide-react';
 import axios from 'axios';
 
 const API_URL = 'http://localhost:5000/api';
@@ -57,8 +69,10 @@ export default function AdminPaymentSection() {
   const [dhobis, setDhobis] = useState<Dhobi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     dhobiId: '',
     amount: '',
@@ -67,36 +81,41 @@ export default function AdminPaymentSection() {
   });
   const [processingPayment, setProcessingPayment] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState<Payment | null>(null);
 
   useEffect(() => {
     fetchPaymentData();
   }, []);
 
+  const showNotification = (msg: string) => {
+    setSuccessMessage(msg);
+    setTimeout(() => setSuccessMessage(''), 5000);
+  };
+
   const fetchPaymentData = async () => {
     try {
       setRefreshing(true);
+      setError('');
       const token = localStorage.getItem('token');
 
-      // Fetch stats
-      const statsRes = await axios.get(`${API_URL}/payments/admin/statistics`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const [statsRes, paymentsRes, dhobisRes] = await Promise.all([
+        axios.get(`${API_URL}/payments/admin/statistics`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${API_URL}/payments/admin/all-payments?limit=50`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${API_URL}/users/dhobis`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
       setStats(statsRes.data.data);
-
-      // Fetch all payments
-      const paymentsRes = await axios.get(`${API_URL}/payments/admin/all-payments?limit=50`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPayments(paymentsRes.data.data);
-
-      // Fetch dhobis
-      const dhobisRes = await axios.get(`${API_URL}/users/dhobis`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      setPayments(paymentsRes.data.data || []);
       setDhobis(dhobisRes.data.data || []);
     } catch (err: any) {
-      console.error('Error fetching payment data:', err);
-      setError('Failed to load payment information');
+      console.error('Error fetching admin payment data:', err);
+      setError('Failed to synchronize financial settlements and records.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -105,24 +124,26 @@ export default function AdminPaymentSection() {
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
 
     if (!paymentForm.dhobiId || !paymentForm.amount) {
-      setError('Please fill in all required fields');
+      setError('Please choose a Dhobi partner and enter the settlement amount.');
       return;
     }
 
     setProcessingPayment(true);
 
     try {
-      const selectedDhobi = dhobis.find(d => d._id === paymentForm.dhobiId);
+      const selectedDhobi = dhobis.find((d) => d._id === paymentForm.dhobiId);
 
       // Check if dhobi has reached monthly limit
       if (selectedDhobi && (selectedDhobi.dhobiProfile?.payments_this_month ?? 0) >= 3) {
-        setError(`Dhobi ${selectedDhobi.name} has reached the monthly payment limit (3 payments)`);
+        setError(`Cannot process payment: ${selectedDhobi.name} has already reached the maximum 3 monthly disbursements.`);
         setProcessingPayment(false);
         return;
       }
 
+      const token = localStorage.getItem('token');
       await axios.post(
         `${API_URL}/payments/admin/dhobi-payment`,
         {
@@ -131,23 +152,18 @@ export default function AdminPaymentSection() {
           paymentMethod: paymentForm.paymentMethod,
           description: paymentForm.description
         },
-        {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      setShowPaymentModal(false);
       setPaymentForm({
         dhobiId: '',
         amount: '',
         paymentMethod: 'bank_transfer',
         description: ''
       });
-      setShowPaymentForm(false);
-      setError('');
-
-      // Refresh data
-      await fetchPaymentData();
-      alert('Payment processed successfully!');
+      showNotification('Partner disbursement voucher processed successfully!');
+      fetchPaymentData();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to process payment');
     } finally {
@@ -156,447 +172,510 @@ export default function AdminPaymentSection() {
   };
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div>;
+    return (
+      <div className="py-20 text-center">
+        <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-xs uppercase tracking-wider text-stone-500 font-bold">Synchronizing Financial Balances...</p>
+      </div>
+    );
   }
 
-  const selectedDhobi = dhobis.find(d => d._id === paymentForm.dhobiId);
+  const selectedDhobi = dhobis.find((d) => d._id === paymentForm.dhobiId);
   const canPayDhobi = !selectedDhobi || (selectedDhobi.dhobiProfile?.payments_this_month || 0) < 3;
 
-  const filteredPayments = paymentFilter
-    ? payments.filter(p => p.payment_type === paymentFilter)
-    : payments;
+  const filteredPayments = payments.filter((p) => {
+    if (paymentFilter && p.payment_type !== paymentFilter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchId = p.payment_id?.toLowerCase().includes(q);
+      const matchUser = p.user_id?.name?.toLowerCase().includes(q);
+      const matchDhobi = p.dhobi_id?.name?.toLowerCase().includes(q);
+      const matchOrder = p.order_id?.order_number?.toLowerCase().includes(q);
+      return matchId || matchUser || matchDhobi || matchOrder;
+    }
+    return true;
+  });
 
   return (
-    <div style={{ marginTop: '32px' }}>
-      {error && (
-        <div style={{
-          background: '#fee',
-          border: '1px solid #fcc',
-          borderRadius: '8px',
-          padding: '16px',
-          marginBottom: '20px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          color: '#c33'
-        }}>
-          <AlertCircle size={20} />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Payment Statistics Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '16px',
-        marginBottom: '32px'
-      }}>
-        <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: 'white',
-          padding: '24px',
-          borderRadius: '12px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <TrendingUp size={24} />
-            <span style={{ fontSize: '12px', opacity: 0.9 }}>User Revenue</span>
+    <div className="space-y-6">
+      
+      {/* Top Header & Disburse Action */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-stone-200">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-stone-100 border border-stone-200 text-stone-700 text-xs font-semibold uppercase tracking-wider mb-2">
+            <CreditCard className="w-3.5 h-3.5 text-stone-600" />
+            Financial Governance & Partner Disbursements
           </div>
-          <p style={{ fontSize: '28px', fontWeight: 'bold', margin: 0 }}>
-            ₹{stats?.user_payments.total_revenue.toFixed(2) || '0.00'}
-          </p>
-          <p style={{ fontSize: '12px', opacity: 0.8, margin: '8px 0 0 0' }}>
-            {stats?.user_payments.total_transactions || 0} transactions
-          </p>
-        </div>
-
-        <div style={{
-          background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-          color: 'white',
-          padding: '24px',
-          borderRadius: '12px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <CreditCard size={24} />
-            <span style={{ fontSize: '12px', opacity: 0.9 }}>Dhobi Payments</span>
-          </div>
-          <p style={{ fontSize: '28px', fontWeight: 'bold', margin: 0 }}>
-            ₹{stats?.dhobi_payments.total_paid.toFixed(2) || '0.00'}
-          </p>
-          <p style={{ fontSize: '12px', opacity: 0.8, margin: '8px 0 0 0' }}>
-            {stats?.dhobi_payments.total_transactions || 0} payments processed
+          <h2 className="font-serif text-2xl sm:text-3xl text-slate-900 tracking-tight">
+            Platform Ledger & Cash Settlement
+          </h2>
+          <p className="text-stone-500 text-xs sm:text-sm mt-1">
+            Reconcile client revenue, review pending payouts, and issue bank disbursals to Dhobi partners.
           </p>
         </div>
 
-        <div style={{
-          background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-          color: 'white',
-          padding: '24px',
-          borderRadius: '12px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <AlertCircle size={24} />
-            <span style={{ fontSize: '12px', opacity: 0.9 }}>Pending</span>
-          </div>
-          <p style={{ fontSize: '28px', fontWeight: 'bold', margin: 0 }}>
-            ₹{stats?.pending_payments.total.toFixed(2) || '0.00'}
-          </p>
-          <p style={{ fontSize: '12px', opacity: 0.8, margin: '8px 0 0 0' }}>
-            {stats?.pending_payments.count || 0} payments
-          </p>
-        </div>
-      </div>
-
-      {/* Process Dhobi Payment Section */}
-      <div style={{
-        background: 'white',
-        border: '1px solid #e2e8f0',
-        borderRadius: '12px',
-        padding: '24px',
-        marginBottom: '32px'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Process Dhobi Payment</h3>
-          <button
-            onClick={() => setShowPaymentForm(!showPaymentForm)}
-            style={{
-              background: '#667eea',
-              color: 'white',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: '500'
-            }}
-          >
-            {showPaymentForm ? 'Cancel' : '+ New Payment'}
-          </button>
-        </div>
-
-        {showPaymentForm && (
-          <form onSubmit={handlePaymentSubmit} style={{
-            background: '#f8fafc',
-            padding: '20px',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0'
-          }}>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-                Select Dhobi
-              </label>
-              <select
-                value={paymentForm.dhobiId}
-                onChange={(e) => setPaymentForm({ ...paymentForm, dhobiId: e.target.value })}
-                required
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e0',
-                  fontSize: '14px'
-                }}
-              >
-                <option value="">Choose a dhobi</option>
-                {dhobis.map((dhobi) => {
-                  const paymentCount = dhobi.dhobiProfile?.payments_this_month || 0;
-                  const canPay = paymentCount < 3;
-                  return (
-                    <option key={dhobi._id} value={dhobi._id} disabled={!canPay}>
-                      {dhobi.name} ({paymentCount}/3) {!canPay ? '- LIMIT REACHED' : ''}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            {selectedDhobi && (
-              <div style={{
-                background: canPayDhobi ? '#d1fae5' : '#fee2e2',
-                padding: '12px',
-                borderRadius: '6px',
-                marginBottom: '16px',
-                fontSize: '14px',
-                color: canPayDhobi ? '#065f46' : '#7f1d1d',
-                fontWeight: '500'
-              }}>
-                {canPayDhobi
-                  ? `✓ ${selectedDhobi.name} can receive ${3 - (selectedDhobi.dhobiProfile?.payments_this_month || 0)} more payment(s) this month`
-                  : `✗ ${selectedDhobi.name} has reached the monthly payment limit (3/3)`}
-              </div>
-            )}
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-                Amount (₹)
-              </label>
-              <input
-                type="number"
-                value={paymentForm.amount}
-                onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                placeholder="Enter amount"
-                step="0.01"
-                min="0"
-                required
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e0',
-                  fontSize: '14px',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-                Payment Method
-              </label>
-              <select
-                value={paymentForm.paymentMethod}
-                onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e0',
-                  fontSize: '14px'
-                }}
-              >
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="upi">UPI</option>
-              </select>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-                Description
-              </label>
-              <input
-                type="text"
-                value={paymentForm.description}
-                onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
-                placeholder="Add payment description"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e0',
-                  fontSize: '14px',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={processingPayment || !canPayDhobi}
-              style={{
-                background: '#48bb78',
-                color: 'white',
-                border: 'none',
-                padding: '12px 24px',
-                borderRadius: '6px',
-                cursor: processingPayment || !canPayDhobi ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                opacity: processingPayment || !canPayDhobi ? 0.6 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <Send size={16} />
-              {processingPayment ? 'Processing...' : 'Process Payment'}
-            </button>
-          </form>
-        )}
-      </div>
-
-      {/* Payment Records */}
-      <div style={{
-        background: 'white',
-        border: '1px solid #e2e8f0',
-        borderRadius: '12px',
-        overflow: 'hidden'
-      }}>
-        <div style={{
-          background: '#f8fafc',
-          padding: '16px 24px',
-          borderBottom: '1px solid #e2e8f0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>Payment Records</h3>
+        <div className="flex items-center gap-3">
           <button
             onClick={() => fetchPaymentData()}
             disabled={refreshing}
-            style={{
-              background: 'transparent',
-              border: '1px solid #cbd5e0',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              cursor: refreshing ? 'not-allowed' : 'pointer',
-              fontWeight: '500',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              opacity: refreshing ? 0.6 : 1
-            }}
+            className="p-2.5 rounded-full border border-stone-300 hover:bg-stone-100 text-stone-600 transition"
+            title="Refresh Ledger"
           >
-            <RefreshCw size={16} />
-            Refresh
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+
+          <button
+            onClick={() => {
+              setShowPaymentModal(true);
+              setError('');
+            }}
+            className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full font-medium text-xs tracking-wide shadow-soft transition-all duration-200 hover:-translate-y-0.5"
+          >
+            <Plus className="w-4 h-4 text-amber-300" />
+            <span>Disburse Partner Payout</span>
           </button>
         </div>
-
-        <div style={{
-          background: 'white',
-          padding: '16px 24px',
-          borderBottom: '1px solid #e2e8f0',
-          display: 'flex',
-          gap: '12px'
-        }}>
-          <button
-            onClick={() => setPaymentFilter('')}
-            style={{
-              background: paymentFilter === '' ? '#667eea' : '#e2e8f0',
-              color: paymentFilter === '' ? 'white' : '#1f2937',
-              border: 'none',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: '500'
-            }}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setPaymentFilter('order_payment')}
-            style={{
-              background: paymentFilter === 'order_payment' ? '#667eea' : '#e2e8f0',
-              color: paymentFilter === 'order_payment' ? 'white' : '#1f2937',
-              border: 'none',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: '500'
-            }}
-          >
-            User Payments
-          </button>
-          <button
-            onClick={() => setPaymentFilter('dhobi_payment')}
-            style={{
-              background: paymentFilter === 'dhobi_payment' ? '#667eea' : '#e2e8f0',
-              color: paymentFilter === 'dhobi_payment' ? 'white' : '#1f2937',
-              border: 'none',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: '500'
-            }}
-          >
-            Dhobi Payments
-          </button>
-        </div>
-
-        {filteredPayments.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: '#64748b' }}>
-                    Payment ID
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: '#64748b' }}>
-                    Type
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: '#64748b' }}>
-                    Party
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: '#64748b' }}>
-                    Amount
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: '#64748b' }}>
-                    Method
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: '#64748b' }}>
-                    Status
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: '#64748b' }}>
-                    Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPayments.map((payment) => (
-                  <tr key={payment._id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: '500' }}>
-                      {payment.payment_id}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        background: payment.payment_type === 'order_payment' ? '#dbeafe' : '#dcfce7',
-                        color: payment.payment_type === 'order_payment' ? '#1e40af' : '#166534',
-                        fontWeight: '500',
-                        fontSize: '12px'
-                      }}>
-                        {payment.payment_type === 'order_payment' ? 'User' : 'Dhobi'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px' }}>
-                      {payment.payment_type === 'order_payment'
-                        ? payment.user_id?.name || 'Unknown'
-                        : payment.dhobi_id?.name || 'Unknown'}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: '600', color: '#10b981' }}>
-                      ₹{payment.amount.toFixed(2)}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', textTransform: 'capitalize' }}>
-                      {payment.payment_method.replace(/_/g, ' ')}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        background: payment.payment_status === 'completed' ? '#d1fae5' : '#fef3c7',
-                        color: payment.payment_status === 'completed' ? '#065f46' : '#92400e',
-                        fontWeight: '500',
-                        fontSize: '12px'
-                      }}>
-                        {payment.payment_status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>
-                      {new Date(payment.createdAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div style={{
-            padding: '40px',
-            textAlign: 'center',
-            color: '#718096'
-          }}>
-            No payments found
-          </div>
-        )}
       </div>
+
+      {/* Notifications */}
+      {successMessage && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <p className="font-medium text-xs sm:text-sm">{successMessage}</p>
+          </div>
+          <button onClick={() => setSuccessMessage('')} className="text-emerald-700 hover:text-emerald-900">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <p className="font-medium text-xs sm:text-sm">{error}</p>
+          </div>
+          <button onClick={() => setError('')} className="text-rose-700 hover:text-rose-900">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Financial Metrics Cards */}
+      {stats && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          
+          {/* User Revenue */}
+          <div className="bg-white border border-stone-200/90 rounded-3xl p-6 shadow-soft hover:shadow-card transition-all duration-300">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Gross Client Revenue</span>
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                <ArrowDownLeft className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="font-serif text-3xl font-bold text-slate-900">
+              ₹{(stats.user_payments.total_revenue || 0).toFixed(2)}
+            </p>
+            <p className="text-xs text-stone-400 mt-1">
+              Collected from {stats.user_payments.total_transactions || 0} order receipts
+            </p>
+          </div>
+
+          {/* Dhobi Disbursements */}
+          <div className="bg-white border border-stone-200/90 rounded-3xl p-6 shadow-soft hover:shadow-card transition-all duration-300">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Dhobi Disbursements</span>
+              <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                <ArrowUpRight className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="font-serif text-3xl font-bold text-slate-900">
+              ₹{(stats.dhobi_payments.total_paid || 0).toFixed(2)}
+            </p>
+            <p className="text-xs text-stone-400 mt-1">
+              Settled across {stats.dhobi_payments.total_transactions || 0} payout vouchers
+            </p>
+          </div>
+
+          {/* Pending Settlements */}
+          <div className="bg-white border border-stone-200/90 rounded-3xl p-6 shadow-soft hover:shadow-card transition-all duration-300">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Pending Settlements</span>
+              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
+                <Clock className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="font-serif text-3xl font-bold text-slate-900">
+              ₹{(stats.pending_payments.total || 0).toFixed(2)}
+            </p>
+            <p className="text-xs text-blue-600 font-medium mt-1">
+              {stats.pending_payments.count || 0} unfinalized transactions
+            </p>
+          </div>
+
+        </div>
+      )}
+
+      {/* Ledger Filter & Search Header */}
+      <div className="bg-white rounded-3xl p-6 border border-stone-200/90 shadow-soft space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by payment ID, user, dhobi, or order #..."
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs bg-stone-50"
+            />
+          </div>
+
+          {/* Type Filter Pills */}
+          <div className="inline-flex p-1 rounded-full bg-stone-100 border border-stone-200 text-xs font-semibold gap-1">
+            {[
+              { id: '', label: 'All Transactions' },
+              { id: 'order_payment', label: 'Client Inflow' },
+              { id: 'dhobi_payment', label: 'Partner Payouts' }
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setPaymentFilter(f.id)}
+                className={`px-3.5 py-1.5 rounded-full transition-all ${
+                  paymentFilter === f.id
+                    ? 'bg-slate-900 text-white shadow-xs font-bold'
+                    : 'text-stone-600 hover:text-slate-900'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Transactions Table */}
+      <div className="bg-white rounded-3xl border border-stone-200/90 shadow-soft overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-stone-50 border-b border-stone-200 text-stone-500 uppercase tracking-wider text-[10px]">
+              <tr>
+                <th className="py-4 px-6 font-bold">Transaction Reference</th>
+                <th className="py-4 px-6 font-bold">Type</th>
+                <th className="py-4 px-6 font-bold">Party / Account</th>
+                <th className="py-4 px-6 font-bold">Amount</th>
+                <th className="py-4 px-6 font-bold">Method</th>
+                <th className="py-4 px-6 font-bold">Status</th>
+                <th className="py-4 px-6 font-bold">Date</th>
+                <th className="py-4 px-6 font-bold text-right">Audit</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {filteredPayments.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-stone-400">
+                    No transactions match the selected criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredPayments.map((payment) => {
+                  const isClient = payment.payment_type === 'order_payment';
+                  const partyName = isClient
+                    ? payment.user_id?.name || 'Customer'
+                    : payment.dhobi_id?.name || 'Dhobi Partner';
+
+                  return (
+                    <tr key={payment._id} className="hover:bg-stone-50/60 transition">
+                      <td className="py-4 px-6 font-mono font-bold text-slate-900">
+                        {payment.payment_id}
+                        {payment.order_id?.order_number && (
+                          <span className="block text-[10px] text-stone-400 font-mono font-normal mt-0.5">
+                            Order #{payment.order_id.order_number}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                          isClient
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}>
+                          {isClient ? (
+                            <>
+                              <ArrowDownLeft className="w-3 h-3 text-blue-600" />
+                              <span>Client Pay</span>
+                            </>
+                          ) : (
+                            <>
+                              <ArrowUpRight className="w-3 h-3 text-amber-600" />
+                              <span>Dhobi Payout</span>
+                            </>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 font-medium text-slate-900">
+                        {partyName}
+                      </td>
+                      <td className={`py-4 px-6 font-serif font-bold text-sm ${
+                        isClient ? 'text-emerald-700' : 'text-slate-900'
+                      }`}>
+                        {isClient ? '+' : '-'}₹{payment.amount.toFixed(2)}
+                      </td>
+                      <td className="py-4 px-6 capitalize text-stone-600">
+                        {payment.payment_method?.replace(/_/g, ' ')}
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                          payment.payment_status === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            payment.payment_status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'
+                          }`} />
+                          <span className="capitalize">{payment.payment_status}</span>
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-stone-400 text-[11px]">
+                        {new Date(payment.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <button
+                          onClick={() => setSelectedReceipt(payment)}
+                          className="text-xs font-semibold text-slate-900 hover:text-stone-600 inline-flex items-center gap-1"
+                        >
+                          <span>View</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: DISBURSE PARTNER PAYOUT */}
+      {/* ---------------------------------------------------- */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-floating w-full max-w-lg overflow-hidden border border-stone-200">
+            <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50/70">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-stone-400">
+                  Administrative Disbursal
+                </span>
+                <h3 className="font-serif text-xl font-bold text-slate-900">Process Partner Settlement</h3>
+              </div>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="p-1.5 rounded-full hover:bg-stone-200/70 text-stone-400 hover:text-stone-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePaymentSubmit} className="p-6 space-y-4">
+              {/* Dhobi Partner Selector */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Select Dhobi Partner *
+                </label>
+                <select
+                  value={paymentForm.dhobiId}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, dhobiId: e.target.value })}
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs bg-white font-medium"
+                >
+                  <option value="">Select an active artisan...</option>
+                  {dhobis.map((dhobi) => {
+                    const paymentCount = dhobi.dhobiProfile?.payments_this_month || 0;
+                    const canPay = paymentCount < 3;
+                    return (
+                      <option key={dhobi._id} value={dhobi._id} disabled={!canPay}>
+                        {dhobi.name} ({paymentCount}/3 payouts this month) {!canPay ? '— LIMIT REACHED' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Limit Status Feedback Box */}
+              {selectedDhobi && (
+                <div className={`p-3.5 rounded-2xl text-xs flex items-center gap-2.5 ${
+                  canPayDhobi
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
+                }`}>
+                  {canPayDhobi ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        <strong>{selectedDhobi.name}</strong> can receive <strong>{3 - (selectedDhobi.dhobiProfile?.payments_this_month || 0)}</strong> more disbursement(s) this billing month.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>
+                        <strong>{selectedDhobi.name}</strong> has reached the monthly 3-disbursement threshold.
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Settlement Amount */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Settlement Amount (₹) *
+                </label>
+                <input
+                  type="number"
+                  value={paymentForm.amount}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                  placeholder="e.g. 2400"
+                  step="0.01"
+                  min="1"
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-sm font-serif font-bold"
+                />
+              </div>
+
+              {/* Method */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Disbursal Mode
+                </label>
+                <select
+                  value={paymentForm.paymentMethod}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs bg-white font-medium"
+                >
+                  <option value="bank_transfer">Direct Bank NEFT / RTGS</option>
+                  <option value="upi">Instant UPI Transfer</option>
+                  <option value="cash">Petty Cash Handover</option>
+                  <option value="cheque">Commercial Cheque</option>
+                </select>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Internal Settlement Memo
+                </label>
+                <input
+                  type="text"
+                  value={paymentForm.description}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
+                  placeholder="e.g. Weekly wash batch clearance for Zone 2"
+                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                />
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-stone-100">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="px-5 py-2.5 rounded-full text-xs font-semibold text-stone-600 hover:bg-stone-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={processingPayment || !canPayDhobi}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold tracking-wide bg-slate-900 hover:bg-slate-800 text-white shadow-soft transition disabled:bg-stone-300 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-3.5 h-3.5 text-amber-300" />
+                  <span>{processingPayment ? 'Authorizing Payout...' : 'Authorize Disbursement'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: TRANSACTION VOUCHER AUDIT */}
+      {/* ---------------------------------------------------- */}
+      {selectedReceipt && (
+        <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-floating w-full max-w-sm overflow-hidden border border-stone-200">
+            <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50/70">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-stone-400">Platform Ledger</span>
+                <h4 className="font-serif text-xl font-bold text-slate-900">Transaction Audit</h4>
+              </div>
+              <button
+                onClick={() => setSelectedReceipt(null)}
+                className="text-stone-400 hover:text-slate-900 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="text-center py-3 bg-stone-50 rounded-2xl border border-stone-200/70">
+                <span className="text-stone-400 text-[10px] uppercase font-bold tracking-wider">Settled Amount</span>
+                <p className="font-serif text-3xl font-bold text-slate-900 mt-1">
+                  ₹{selectedReceipt.amount.toFixed(2)}
+                </p>
+                <span className="inline-block mt-1 text-[10px] uppercase tracking-wider font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+                  {selectedReceipt.payment_status}
+                </span>
+              </div>
+
+              <div className="space-y-2 text-stone-600">
+                <div className="flex justify-between py-1 border-b border-stone-100">
+                  <span className="text-stone-400">Transaction ID:</span>
+                  <span className="font-mono font-bold text-slate-900">{selectedReceipt.payment_id}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-stone-100">
+                  <span className="text-stone-400">Account Party:</span>
+                  <span className="font-bold text-slate-900">
+                    {selectedReceipt.payment_type === 'order_payment'
+                      ? selectedReceipt.user_id?.name || 'Customer'
+                      : selectedReceipt.dhobi_id?.name || 'Dhobi Partner'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-stone-100">
+                  <span className="text-stone-400">Method:</span>
+                  <span className="font-medium text-slate-900 capitalize">
+                    {selectedReceipt.payment_method?.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-stone-100">
+                  <span className="text-stone-400">Timestamp:</span>
+                  <span className="font-medium text-slate-900">
+                    {new Date(selectedReceipt.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                {selectedReceipt.description && (
+                  <div className="pt-1">
+                    <span className="text-stone-400 block mb-1">Administrative Note:</span>
+                    <p className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-stone-800 italic">
+                      "{selectedReceipt.description}"
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-stone-50 border-t border-stone-100 text-right">
+              <button
+                onClick={() => setSelectedReceipt(null)}
+                className="px-5 py-2 rounded-full text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition"
+              >
+                Close Voucher
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
