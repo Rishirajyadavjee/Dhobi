@@ -14,6 +14,10 @@ const dhobiProfileSchema = new mongoose.Schema({
   services_offered: { type: String },
   rate_per_item: { type: Number, default: 0 },
   bio: { type: String, default: '' },
+  location: {
+    lat: { type: Number, default: null },
+    lng: { type: Number, default: null }
+  },
   // Payment tracking
   wallet_balance: { type: Number, default: 0.0 },
   total_earnings: { type: Number, default: 0.0 },
@@ -49,6 +53,10 @@ const userSchema = new mongoose.Schema({
   },
   profile_image: { type: String },
   address: { type: String },
+  location: {
+    lat: { type: Number, default: null },
+    lng: { type: Number, default: null }
+  },
   // Payment related fields for regular users
   wallet_balance: { type: Number, default: 0.0 },
   total_spent: { type: Number, default: 0.0 },

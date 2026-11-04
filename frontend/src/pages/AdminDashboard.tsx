@@ -16,10 +16,18 @@ import {
   Mail,
   MapPin,
   UserCheck,
-  UserX
+  UserX,
+  Clock,
+  RotateCcw,
+  Activity,
+  FileSpreadsheet
 } from 'lucide-react';
 import axios from 'axios';
 import AdminPaymentSection from '../components/AdminPaymentSection';
+import AdminAnalyticsSection from '../components/AdminAnalyticsSection';
+import AdminReportsSection from '../components/AdminReportsSection';
+import AssignDhobiModal from '../components/AssignDhobiModal';
+import ReassignmentHistoryModal from '../components/ReassignmentHistoryModal';
 
 const API_URL = 'http://localhost:5000/api';
 
@@ -33,7 +41,7 @@ interface AdminStats {
 }
 
 interface Order {
-  id: number;
+  id: number | string;
   _id?: string;
   order_number: string;
   customer_name: string;
@@ -42,8 +50,14 @@ interface Order {
   service_type: string;
   dhobi_id?: string;
   dhobi_name?: string;
+  dhobi_phone?: string;
+  dhobi_distance_km?: number;
   pickup_date?: string;
   pickup_address?: string;
+  assignment_status?: string;
+  remaining_acceptance_seconds?: number;
+  reassignment_count?: number;
+  reassignment_history?: any[];
 }
 
 interface Dhobi {
@@ -86,7 +100,7 @@ export default function AdminDashboard() {
   const [successMessage, setSuccessMessage] = useState('');
 
   // Active Main Tab
-  const [activeTab, setActiveTab] = useState<'orders' | 'users' | 'dhobis' | 'finance'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'analytics' | 'reports' | 'users' | 'dhobis' | 'finance'>('orders');
 
   // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -94,8 +108,10 @@ export default function AdminDashboard() {
   const [orderStatusFilter, setOrderStatusFilter] = useState('all');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [newStatus, setNewStatus] = useState('');
-  const [assigningDhobi, setAssigningDhobi] = useState<Order | null>(null);
-  const [selectedDhobiId, setSelectedDhobiId] = useState('');
+
+  // Shortest Distance & Reassignment Modals
+  const [modalAssigningOrder, setModalAssigningOrder] = useState<Order | null>(null);
+  const [modalHistoryOrder, setModalHistoryOrder] = useState<Order | null>(null);
 
   // User Management (Full CRUD) State
   const [userList, setUserList] = useState<ManagedUser[]>([]);
@@ -146,6 +162,29 @@ export default function AdminDashboard() {
     fetchAllOrders();
     fetchAllDhobis();
     fetchUsers();
+  }, []);
+
+  // Live countdown timer for orders awaiting dhobi acceptance
+  useEffect(() => {
+    const timerInterval = setInterval(() => {
+      setOrders((prev) =>
+        prev.map((ord) => {
+          if (ord.assignment_status === 'pending_acceptance' && ord.remaining_acceptance_seconds != null) {
+            const next = ord.remaining_acceptance_seconds - 1;
+            if (next <= 0 && ord.remaining_acceptance_seconds > 0) {
+              setTimeout(fetchAllOrders, 1000);
+            }
+            return {
+              ...ord,
+              remaining_acceptance_seconds: Math.max(0, next)
+            };
+          }
+          return ord;
+        })
+      );
+    }, 1000);
+
+    return () => clearInterval(timerInterval);
   }, []);
 
   const showNotification = (msg: string) => {
@@ -365,28 +404,6 @@ export default function AdminDashboard() {
   // ----------------------------------------------------
   // ORDER MANAGEMENT HANDLERS
   // ----------------------------------------------------
-  const handleAssignDhobi = async (orderId: string) => {
-    if (!selectedDhobiId) {
-      alert('Please select a Dhobi partner');
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('token');
-      await axios.put(
-        `${API_URL}/orders/admin/${orderId}/assign-dhobi`,
-        { dhobi_id: selectedDhobiId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setAssigningDhobi(null);
-      setSelectedDhobiId('');
-      showNotification('Dhobi partner assigned to order.');
-      fetchAllOrders();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to assign dhobi.');
-    }
-  };
-
   const handleUpdateOrderStatus = async (orderId: string) => {
     if (!newStatus) return;
 
@@ -533,7 +550,31 @@ export default function AdminDashboard() {
                 : 'text-stone-600 hover:text-slate-900 hover:bg-stone-100'
             }`}
           >
-            Orders & Assignments ({orders.length})
+            Orders & Dispatch ({orders.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`px-4 py-2.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 ${
+              activeTab === 'analytics'
+                ? 'bg-slate-900 text-white shadow-soft font-bold'
+                : 'text-stone-600 hover:text-slate-900 hover:bg-stone-100'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Real-Time Analytics & Live Log</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`px-4 py-2.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 ${
+              activeTab === 'reports'
+                ? 'bg-slate-900 text-white shadow-soft font-bold'
+                : 'text-stone-600 hover:text-slate-900 hover:bg-stone-100'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-blue-500" />
+            <span>Reports & Downloads</span>
           </button>
 
           <button
@@ -666,39 +707,48 @@ export default function AdminDashboard() {
                               )}
                             </td>
                             <td className="py-4 px-6">
-                              {assigningDhobi && (assigningDhobi._id === order._id || assigningDhobi.id === order.id) ? (
-                                <div className="flex items-center gap-1.5">
-                                  <select
-                                    value={selectedDhobiId}
-                                    onChange={(e) => setSelectedDhobiId(e.target.value)}
-                                    className="px-2 py-1 rounded-lg border border-stone-300 text-xs bg-white max-w-[150px]"
-                                  >
-                                    <option value="">Select Dhobi...</option>
-                                    {dhobis.map((d) => (
-                                      <option key={d._id || d.id} value={d._id || d.id}>
-                                        {d.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    onClick={() => handleAssignDhobi(orderId)}
-                                    className="p-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2">
-                                  {order.dhobi_name ? (
-                                    <span className="text-emerald-700 font-medium flex items-center gap-1">
-                                      <Briefcase className="w-3.5 h-3.5" />
+                              <div className="space-y-1.5">
+                                {order.dhobi_name ? (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-emerald-700 font-bold flex items-center gap-1 text-xs">
+                                      <Briefcase className="w-3.5 h-3.5 text-emerald-600" />
                                       {order.dhobi_name}
                                     </span>
-                                  ) : (
-                                    <span className="text-rose-600 font-semibold text-[11px]">Unassigned</span>
-                                  )}
-                                </div>
-                              )}
+                                    {order.dhobi_distance_km != null && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-200">
+                                        📍 {order.dhobi_distance_km} km
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-rose-600 font-bold text-[11px] bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                                    Unassigned
+                                  </span>
+                                )}
+
+                                {order.assignment_status === 'pending_acceptance' && (
+                                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                                    <Clock className="w-3 h-3 text-amber-700" />
+                                    <span>
+                                      5-min accept window ({Math.floor((order.remaining_acceptance_seconds || 0) / 60)}m {(order.remaining_acceptance_seconds || 0) % 60}s)
+                                    </span>
+                                  </div>
+                                )}
+
+                                {(order.reassignment_count || 0) > 0 && (
+                                  <div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setModalHistoryOrder(order)}
+                                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition"
+                                      title="View shift & handoff timeline"
+                                    >
+                                      <RotateCcw className="w-2.5 h-2.5" />
+                                      <span>{order.reassignment_count}x Shifted</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="py-4 px-6 text-right">
                               <div className="flex items-center justify-end gap-1.5">
@@ -713,15 +763,21 @@ export default function AdminDashboard() {
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    setAssigningDhobi(order);
-                                    setSelectedDhobiId(order.dhobi_id || '');
-                                  }}
+                                  onClick={() => setModalAssigningOrder(order)}
                                   className="p-1.5 rounded-lg border border-stone-200 text-stone-600 hover:text-purple-700 hover:bg-purple-50 transition"
-                                  title="Assign Dhobi"
+                                  title="Assign Dhobi (Shortest Distance)"
                                 >
                                   <Briefcase className="w-3.5 h-3.5" />
                                 </button>
+                                {(order.reassignment_count || 0) > 0 && (
+                                  <button
+                                    onClick={() => setModalHistoryOrder(order)}
+                                    className="p-1.5 rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-100 transition"
+                                    title="View Reassignment Audit Trail"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handleDeleteOrder(orderId)}
                                   className="p-1.5 rounded-lg border border-stone-200 text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition"
@@ -739,6 +795,24 @@ export default function AdminDashboard() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ==================================================== */}
+        {/* TAB: REAL-TIME ANALYTICS & LIVE AUDIT FEED */}
+        {/* ==================================================== */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-6">
+            <AdminAnalyticsSection />
+          </div>
+        )}
+
+        {/* ==================================================== */}
+        {/* TAB: REPORTS & DATA DOWNLOADS */}
+        {/* ==================================================== */}
+        {activeTab === 'reports' && (
+          <div className="space-y-6">
+            <AdminReportsSection />
           </div>
         )}
 
@@ -1429,6 +1503,30 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL 4: SHORTEST DISTANCE DHOBI ASSIGNMENT */}
+      {/* ---------------------------------------------------- */}
+      {modalAssigningOrder && (
+        <AssignDhobiModal
+          order={modalAssigningOrder}
+          onClose={() => setModalAssigningOrder(null)}
+          onAssigned={(msg) => {
+            showNotification(msg);
+            fetchAllOrders();
+          }}
+        />
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL 5: REASSIGNMENT & SHIFT AUDIT TRAIL */}
+      {/* ---------------------------------------------------- */}
+      {modalHistoryOrder && (
+        <ReassignmentHistoryModal
+          order={modalHistoryOrder}
+          onClose={() => setModalHistoryOrder(null)}
+        />
       )}
 
     </div>

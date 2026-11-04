@@ -6,6 +6,7 @@ import authRoutes from './routes/authRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import { processExpiredPendingAssignments } from './controllers/orderController.js';
 
 dotenv.config();
 
@@ -13,7 +14,7 @@ dotenv.config();
 connectDB();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
@@ -53,7 +54,18 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Start background monitor for 5-minute dhobi acceptance timeouts
+// Runs every 15 seconds to automatically shift unaccepted orders to the next nearest dhobi
+setInterval(async () => {
+  try {
+    await processExpiredPendingAssignments();
+  } catch (err) {
+    console.error('Assignment timeout background monitor error:', err.message);
+  }
+}, 15000);
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+  console.log(`⏱️ 5-minute Auto-Reassignment Monitor active`);
 });

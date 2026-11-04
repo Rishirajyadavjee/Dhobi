@@ -15,9 +15,11 @@ import {
   RefreshCw,
   LogOut,
   ChevronRight,
-  Star,
   Check,
-  ArrowRight
+  ArrowRight,
+  XCircle,
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 import axios from 'axios';
 import DhobiPaymentSection from '../components/DhobiPaymentSection';
@@ -45,7 +47,15 @@ interface Order {
   notes?: string;
   customer_name?: string;
   customer_phone?: string;
+  customer_address?: string;
   created_at?: string;
+  assigned_at?: string;
+  acceptance_deadline?: string;
+  assignment_status?: string;
+  remaining_acceptance_seconds?: number;
+  is_acceptance_expired?: boolean;
+  distance_km?: number;
+  reassignment_history?: any[];
 }
 
 export default function DhobiDashboard() {
@@ -59,13 +69,43 @@ export default function DhobiDashboard() {
   const [updatingOrderId, setUpdatingOrderId] = useState<string | number | null>(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
 
+  // Cancellation Modal State
+  const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
+  const [cancellationReason, setCancellationReason] = useState('Equipment breakdown / machine maintenance');
+  const [customReason, setCustomReason] = useState('');
+  const [submittingCancel, setSubmittingCancel] = useState(false);
+
   useEffect(() => {
     fetchOrders();
   }, []);
 
+  // 1-second interval to update 5-minute countdown timers
+  useEffect(() => {
+    const timerInterval = setInterval(() => {
+      setOrders((prevOrders) =>
+        prevOrders.map((ord) => {
+          if (ord.assignment_status === 'pending_acceptance' && ord.remaining_acceptance_seconds != null) {
+            const nextSec = ord.remaining_acceptance_seconds - 1;
+            if (nextSec <= 0 && ord.remaining_acceptance_seconds > 0) {
+              // Timer just elapsed — re-fetch to trigger backend auto-shift
+              setTimeout(fetchOrders, 1000);
+            }
+            return {
+              ...ord,
+              remaining_acceptance_seconds: Math.max(0, nextSec)
+            };
+          }
+          return ord;
+        })
+      );
+    }, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, []);
+
   const showNotification = (msg: string) => {
     setSuccessMessage(msg);
-    setTimeout(() => setSuccessMessage(''), 5000);
+    setTimeout(() => setSuccessMessage(''), 6000);
   };
 
   const fetchOrders = async () => {
@@ -107,23 +147,58 @@ export default function DhobiDashboard() {
     }
   };
 
-  const handleConfirmOrder = async (orderId: string | number) => {
+  // Accept Order Assignment (Stops 5-minute timer)
+  const handleAcceptAssignment = async (orderId: string | number) => {
     try {
       setUpdatingOrderId(orderId);
       const token = localStorage.getItem('token');
-      await axios.put(
-        `${API_URL}/orders/${orderId}/confirm`,
+      const response = await axios.put(
+        `${API_URL}/orders/${orderId}/dhobi-accept`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      showNotification('Order confirmed! Ready for pickup schedule.');
+      showNotification(response.data.message || 'Order accepted! You are confirmed for garment pickup.');
       fetchOrders();
     } catch (err: any) {
-      console.error('Failed to confirm order:', err);
-      setError(err.response?.data?.message || 'Failed to confirm order.');
+      console.error('Failed to accept order:', err);
+      setError(err.response?.data?.message || 'Failed to accept order. It may have timed out and been shifted.');
+      fetchOrders();
     } finally {
       setUpdatingOrderId(null);
     }
+  };
+
+  // Cancel order & trigger automatic handoff to nearest available partner
+  const handleConfirmCancellation = async () => {
+    if (!cancellingOrder) return;
+    const orderId = cancellingOrder.id || cancellingOrder._id;
+    const finalReason = customReason.trim() ? customReason.trim() : cancellationReason;
+
+    try {
+      setSubmittingCancel(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.put(
+        `${API_URL}/orders/${orderId}/dhobi-cancel`,
+        { reason: finalReason },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setCancellingOrder(null);
+      setCustomReason('');
+      showNotification(response.data.message || 'Order cancelled and successfully shifted to the closest available partner.');
+      fetchOrders();
+    } catch (err: any) {
+      console.error('Failed to cancel order:', err);
+      setError(err.response?.data?.message || 'Failed to cancel order.');
+    } finally {
+      setSubmittingCancel(false);
+    }
+  };
+
+  const formatTimer = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Quick sequential progress step
@@ -151,12 +226,15 @@ export default function DhobiDashboard() {
     ['pending', 'confirmed', 'picked-up', 'processing', 'ready'].includes(o.status?.toLowerCase())
   ).length;
   const deliveredCount = orders.filter((o) => o.status?.toLowerCase() === 'delivered').length;
+  const pendingAcceptanceCount = orders.filter((o) => o.assignment_status === 'pending_acceptance').length;
   const totalEarningsEstimated = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
 
   // Filter & Search logic
   const filteredOrders = orders.filter((order) => {
     const status = order.status?.toLowerCase() || '';
-    if (statusFilter === 'active') {
+    if (statusFilter === 'pending_acceptance') {
+      if (order.assignment_status !== 'pending_acceptance') return false;
+    } else if (statusFilter === 'active') {
       if (!['pending', 'confirmed', 'picked-up', 'processing', 'ready'].includes(status)) return false;
     } else if (statusFilter === 'confirmation') {
       if (!['pending', 'confirmed'].includes(status)) return false;
@@ -181,7 +259,15 @@ export default function DhobiDashboard() {
     return true;
   });
 
-  const getStatusBadge = (st: string) => {
+  const getStatusBadge = (st: string, assignmentStatus?: string) => {
+    if (assignmentStatus === 'pending_acceptance') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+          <Clock className="w-3.5 h-3.5 text-amber-700" /> Awaiting 5-Min Acceptance
+        </span>
+      );
+    }
+
     switch (st.toLowerCase()) {
       case 'delivered':
         return (
@@ -275,7 +361,7 @@ export default function DhobiDashboard() {
 
         {/* Global Notifications */}
         {successMessage && (
-          <div className="mt-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center justify-between animate-fadeIn">
+          <div className="mt-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center justify-between animate-fadeIn shadow-sm">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
               <p className="font-medium text-xs sm:text-sm">{successMessage}</p>
@@ -287,7 +373,7 @@ export default function DhobiDashboard() {
         )}
 
         {error && (
-          <div className="mt-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between animate-fadeIn">
+          <div className="mt-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between animate-fadeIn shadow-sm">
             <div className="flex items-center gap-3">
               <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
               <p className="font-medium text-xs sm:text-sm">{error}</p>
@@ -314,9 +400,20 @@ export default function DhobiDashboard() {
 
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-stone-200/90 shadow-soft">
             <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] sm:text-xs uppercase font-bold tracking-wider text-stone-500">Awaiting 5-Min Accept</span>
+              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                <Clock className="w-4 h-4 animate-pulse" />
+              </div>
+            </div>
+            <p className="font-serif text-3xl sm:text-4xl font-bold text-amber-900">{pendingAcceptanceCount}</p>
+            <p className="text-[11px] text-amber-700 font-medium mt-1">Requires your prompt confirmation</p>
+          </div>
+
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-stone-200/90 shadow-soft">
+            <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] sm:text-xs uppercase font-bold tracking-wider text-stone-500">In Atelier Care</span>
               <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
-                <Clock className="w-4 h-4" />
+                <Truck className="w-4 h-4" />
               </div>
             </div>
             <p className="font-serif text-3xl sm:text-4xl font-bold text-slate-900">{inCareCount}</p>
@@ -332,20 +429,6 @@ export default function DhobiDashboard() {
             </div>
             <p className="font-serif text-3xl sm:text-4xl font-bold text-slate-900">{deliveredCount}</p>
             <p className="text-[11px] text-emerald-600 font-medium mt-1">Returned to clientele</p>
-          </div>
-
-          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-stone-200/90 shadow-soft">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] sm:text-xs uppercase font-bold tracking-wider text-stone-500">Artisan Trust</span>
-              <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
-                <Star className="w-4 h-4 fill-purple-600 text-purple-600" />
-              </div>
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <p className="font-serif text-3xl sm:text-4xl font-bold text-slate-900">4.9</p>
-              <span className="text-stone-400 text-xs font-semibold">/ 5.0</span>
-            </div>
-            <p className="text-[11px] text-purple-700 font-medium mt-1">Master artisan rating</p>
           </div>
 
         </div>
@@ -376,6 +459,7 @@ export default function DhobiDashboard() {
         <div className="flex items-center gap-2 border-b border-stone-200 pb-px mb-8 overflow-x-auto text-xs font-semibold">
           {[
             { id: 'all', label: `All Orders (${orders.length})` },
+            { id: 'pending_acceptance', label: `Pending Accept (${pendingAcceptanceCount})` },
             { id: 'confirmation', label: 'Awaiting Action' },
             { id: 'processing', label: 'In Atelier Treatment' },
             { id: 'ready', label: 'Ready for Dispatch' },
@@ -422,6 +506,8 @@ export default function DhobiDashboard() {
             {filteredOrders.map((order) => {
               const orderId = order.id || order._id || '';
               const status = order.status?.toLowerCase() || 'pending';
+              const isPendingAcceptance = order.assignment_status === 'pending_acceptance';
+              const remainingSec = order.remaining_acceptance_seconds || 0;
               const serviceInfo = SERVICE_RATES[order.service_type] || {
                 label: order.service_type,
                 rate: 0,
@@ -434,20 +520,78 @@ export default function DhobiDashboard() {
               return (
                 <div
                   key={orderId}
-                  className="bg-white rounded-3xl p-6 sm:p-7 border border-stone-200/90 shadow-soft hover:shadow-card transition-all duration-300 flex flex-col justify-between"
+                  className={`bg-white rounded-3xl p-6 sm:p-7 border transition-all duration-300 flex flex-col justify-between ${
+                    isPendingAcceptance
+                      ? 'border-amber-300 ring-2 ring-amber-100 shadow-md'
+                      : 'border-stone-200/90 shadow-soft hover:shadow-card'
+                  }`}
                 >
                   <div className="space-y-4">
+                    {/* 5-Minute Timeout Banner */}
+                    {isPendingAcceptance && (
+                      <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-amber-200/80 flex items-center justify-center text-amber-900 font-bold shrink-0">
+                            <Clock className="w-4 h-4 animate-spin" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                                5-Min Acceptance Timer:
+                              </span>
+                              <span className="font-mono text-xs font-black px-2 py-0.5 rounded-md bg-amber-900 text-amber-100">
+                                {formatTimer(remainingSec)}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-amber-700 mt-0.5">
+                              {remainingSec > 0
+                                ? 'Accept now, or order shifts automatically to another nearby partner.'
+                                : 'Timer expired! Auto-shifting to nearest partner...'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => handleAcceptAssignment(orderId)}
+                            disabled={isUpdating || remainingSec <= 0}
+                            className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-soft transition flex items-center gap-1.5"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Accept</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCancellingOrder(order);
+                              setCancellationReason('Declined initial dispatch schedule');
+                            }}
+                            disabled={isUpdating}
+                            className="px-3 py-1.5 rounded-full text-xs font-semibold bg-rose-100 hover:bg-rose-200 text-rose-800 transition"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Card Top: Order Number & Status Badge */}
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <span className="text-[11px] font-mono uppercase text-stone-400 font-bold tracking-wider">
-                          #{order.order_number}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono uppercase text-stone-400 font-bold tracking-wider">
+                            #{order.order_number}
+                          </span>
+                          {order.distance_km != null && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200">
+                              📍 {order.distance_km} km away
+                            </span>
+                          )}
+                        </div>
                         <h4 className="font-serif text-xl font-bold text-slate-900 mt-0.5">
                           {serviceInfo.label}
                         </h4>
                       </div>
-                      {getStatusBadge(status)}
+                      {getStatusBadge(status, order.assignment_status)}
                     </div>
 
                     {/* Customer Details Pill */}
@@ -521,26 +665,41 @@ export default function DhobiDashboard() {
                     {/* Primary Workflow Progress Button */}
                     <div className="flex flex-wrap items-center gap-2 justify-between">
                       
-                      {status === 'confirmed' && (
+                      {isPendingAcceptance ? (
                         <button
-                          onClick={() => handleConfirmOrder(orderId)}
+                          onClick={() => handleAcceptAssignment(orderId)}
                           disabled={isUpdating}
                           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-soft transition"
                         >
                           <Check className="w-3.5 h-3.5" />
                           <span>Accept Assignment</span>
                         </button>
+                      ) : (
+                        nextAction && status !== 'delivered' && status !== 'cancelled' && (
+                          <button
+                            onClick={() => handleStatusUpdate(orderId, nextAction.nextStatus)}
+                            disabled={isUpdating}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-soft transition"
+                          >
+                            <nextAction.icon className="w-3.5 h-3.5 text-amber-300" />
+                            <span>{nextAction.label}</span>
+                            <ArrowRight className="w-3 h-3 text-stone-400" />
+                          </button>
+                        )
                       )}
 
-                      {nextAction && status !== 'confirmed' && (
+                      {/* Dhobi Cancel / Shift Button */}
+                      {status !== 'delivered' && status !== 'cancelled' && (
                         <button
-                          onClick={() => handleStatusUpdate(orderId, nextAction.nextStatus)}
-                          disabled={isUpdating}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-soft transition"
+                          onClick={() => {
+                            setCancellingOrder(order);
+                            setCancellationReason('Equipment breakdown / Machine maintenance');
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition"
+                          title="Cancel order and immediately shift to next nearest partner"
                         >
-                          <nextAction.icon className="w-3.5 h-3.5 text-amber-300" />
-                          <span>{nextAction.label}</span>
-                          <ArrowRight className="w-3 h-3 text-stone-400" />
+                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Cancel & Shift</span>
                         </button>
                       )}
 
@@ -592,6 +751,105 @@ export default function DhobiDashboard() {
         </div>
 
       </div>
+
+      {/* ---------------------------------------------------- */}
+      {/* MODAL: Dhobi Cancel & Shift Order Modal */}
+      {/* ---------------------------------------------------- */}
+      {cancellingOrder && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-stone-200 animate-fadeIn">
+            <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-rose-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-rose-600">Partner Cancellation</span>
+                  <h3 className="font-serif text-xl font-bold text-slate-900">
+                    Cancel Hamper #{cancellingOrder.order_number}
+                  </h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setCancellingOrder(null)}
+                className="p-1.5 rounded-full hover:bg-stone-200/70 text-stone-400 hover:text-stone-700 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <RotateCcw className="w-4 h-4 text-amber-700" />
+                  Automatic Nearest Partner Hand-off
+                </p>
+                <p className="text-[11px] text-amber-800">
+                  When you cancel this hamper, the system immediately calculates and transfers the order to the next closest available partner based on the customer's pickup address, ensuring seamless service.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-2">
+                  Select Reason for Cancellation
+                </label>
+                <select
+                  value={cancellationReason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white font-medium text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none"
+                >
+                  <option value="Equipment breakdown / machine maintenance">Equipment breakdown / machine maintenance</option>
+                  <option value="Urgent personal emergency / indisposed">Urgent personal emergency / indisposed</option>
+                  <option value="Laundry atelier at maximum capacity">Laundry atelier at maximum capacity</option>
+                  <option value="Customer pickup address outside reachable zone">Customer pickup address outside reachable zone</option>
+                  <option value="Custom specific reason">Other specific reason (enter below)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-600 mb-1">
+                  Additional Notes (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={customReason}
+                  onChange={(e) => setCustomReason(e.target.value)}
+                  placeholder="Provide any context for the admin and the incoming partner..."
+                  className="w-full p-3 rounded-xl border border-stone-300 text-xs focus:ring-2 focus:ring-slate-900 focus:outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 bg-stone-50 border-t border-stone-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setCancellingOrder(null)}
+                className="px-4 py-2 rounded-full text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition"
+              >
+                Keep Order
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCancellation}
+                disabled={submittingCancel}
+                className="px-5 py-2 rounded-full text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-soft transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {submittingCancel ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Reassigning...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Confirm Cancel & Shift to Nearest</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---------------------------------------------------- */}
       {/* MODAL: Inspection Ticket Details */}
